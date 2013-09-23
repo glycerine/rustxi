@@ -27,14 +27,14 @@ Detailed architecture discussion:
 
 There are three processes in the robust, transactional rustxi architecture: VISOR, CUR, and TRY.
 
-First, the grandparent or VISOR -- exists mostly just to give a constant PID to monitor for rusti. The VISOR lives as long as the rusti session is going. The VISOR stores the history of commands executed so far. The VISOR accepts input from the user, and pipes it over to CUR.
+First, the grandparent or VISOR -- exists mostly just to give a constant PID to monitor for rustxi. The VISOR lives as long as the rustxi session is going. The VISOR stores the history of commands executed so far. The VISOR accepts input from the user, and pipes it over to CUR.
 
 Then, there exist in rotation two other processes, two descendent processes of the VISOR. CUR holds the current state after all successful commands in the history have executed. The effects of any unsuccessful code snippets that were compiled and failed, or that were compiled and run and the failed, are completely invisible to CUR. TRY is the forked child of the current CUR, and is used to isolate all failure scenarios.
 
 
 0. the beginning:
 
-Rusti VISOR
+Rustxi VISOR
    |
   CUR (forks off TRY)
    |
@@ -47,7 +47,7 @@ Branching:
 
 1. If the new code succeeds then TRY kills CUR, e.g. by doing kill(getppid(), SIGTERM);
 
-Rusti VISOR
+Rustxi VISOR
   |
  TRY
   
@@ -55,7 +55,7 @@ In detail: TRY, having suceeded (no fail! was called during compiling running th
 
 Then TRY becomes the new CUR, here denoted CUR'. CUR' then in turn forks a new repl, TRY', and we goto 0. to begin again, looking like this:
 
-Rusti VISOR
+Rustxi VISOR
   |
  CUR'
   |
@@ -66,13 +66,13 @@ Rusti VISOR
 
 2. If the new code in TRY fails, then CUR recieves SIGCHLD:
 
-Rusti VISOR
+Rustxi VISOR
   |
  CUR
 
 Detail: TRY when testing the new code, failed. hopefully TRY printed an appropriate error message. Optionally we could start/attach gdb (or even be running under gdb already?). In any case, once the optional debug step is done, CUR notes the failure by receiving/handling SIGCHLD, and prints a failure message itself just in case it wasn't already obvious. Then CUR forks a new child, TRY', and we goto 0. to begin again, looking like this:
 
-Rusti VISOR
+Rustxi VISOR
   |
  CUR 
   |
@@ -93,7 +93,7 @@ I like the fork(2) approach because
  + it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we have spawn or kill rust coroutines (tasks) on this same thread, these will get rolled back. Using fork is a fairly comprehensive solution, since it has been tuned under the kernel for years.
 
 Possible disadvantages of this approach:
- - fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. But this will constaint rusti to not be comprehensive. Comprehensiveness is a non-goal anyway, so this is okay. 80/20 applies.
+ - fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. But this will constaint rustxi to not be comprehensive. Comprehensiveness is a non-goal anyway, so this is okay. 80/20 applies.
 
 **/
 
@@ -199,7 +199,7 @@ impl Visor {
 
         // I'm visor
         let pid = unsafe { fork() };
-        if (pid < 0) { fail!("rusti visor failure in fork: %s", std::os::last_os_error()); }
+        if (pid < 0) { fail!("rustxi visor failure in fork: %s", std::os::last_os_error()); }
         if (pid > 0) {
 
             // I'm visor still.
@@ -215,7 +215,7 @@ impl Visor {
                     std::libc::funcs::posix01::wait::waitpid(-1, &mut zombstatus, WNOHANG)
                 };
 
-	        printf!("%s","<rusti> ");
+	        printf!("%s","<rustxi> ");
 	        let code = stdin().read_line();
                 
                 self.cmd.push(code.clone());
@@ -253,7 +253,7 @@ impl Visor {
 	  printfln!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", getpid() as int, getppid() as int);
 
 	  let pid = unsafe { fork() };
-	  if (pid < 0) { fail!("rusti visor failure in fork: %s", std::os::last_os_error()); }
+	  if (pid < 0) { fail!("rustxi visor failure in fork: %s", std::os::last_os_error()); }
 	  if (0 == pid) {
 	      // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
               unsafe { rustrt::rust_unset_sigprocmask(); }
