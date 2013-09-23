@@ -35,12 +35,12 @@ Then, there exist in rotation two other processes, two descendent processes of t
 0. the beginning:
 
 Rustxi VISOR
-   |
-  CUR (forks off TRY)
-   |
-   |  fork(2)
-   |
-  TRY
+|
+CUR (forks off TRY)
+|
+|  fork(2)
+|
+TRY
 
 
 Branching:
@@ -48,37 +48,37 @@ Branching:
 1. If the new code succeeds then TRY kills CUR, e.g. by doing kill(getppid(), SIGTERM);
 
 Rustxi VISOR
-  |
- TRY
-  
+|
+TRY
+
 In detail: TRY, having suceeded (no fail! was called during compiling running the code snippet) kills CUR. CUR is no longer needed, so it dies, taking its old out-of-date state with it.
 
 Then TRY becomes the new CUR, here denoted CUR'. CUR' then in turn forks a new repl, TRY', and we goto 0. to begin again, looking like this:
 
 Rustxi VISOR
-  |
- CUR'
-  |
-  | fork(2)
-  |
- TRY'
+|
+CUR'
+|
+| fork(2)
+|
+TRY'
 
 
 2. If the new code in TRY fails, then CUR recieves SIGCHLD:
 
 Rustxi VISOR
-  |
- CUR
+|
+CUR
 
 Detail: TRY when testing the new code, failed. hopefully TRY printed an appropriate error message. Optionally we could start/attach gdb (or even be running under gdb already?). In any case, once the optional debug step is done, CUR notes the failure by receiving/handling SIGCHLD, and prints a failure message itself just in case it wasn't already obvious. Then CUR forks a new child, TRY', and we goto 0. to begin again, looking like this:
 
 Rustxi VISOR
-  |
- CUR 
-  |
-  | fork(2)
-  |
- TRY'
+|
+CUR 
+|
+| fork(2)
+|
+TRY'
 
 Summary: In this architecture, CUR is the mediator between VISOR and TRY. The purpose of using processes is that we can have inexpensive commit and rollback on failure/fail!() in the already-jitted and now-we-are-running it code. Since the jitted code may make calls into any pre-compiled library and hence make arbitrary changes to the global process state, fork is the only sane way to rollback.
 
@@ -88,12 +88,12 @@ Discussion:
 
 I like the fork(2) approach because
 
- + it avoids (and requires avoiding) threading. This is a huge win, in my opinion.  Too many projects have fallen into the deep dark pit of threads. During development, you want deterministic behavior, not threads.
++ it avoids (and requires avoiding) threading. This is a huge win, in my opinion.  Too many projects have fallen into the deep dark pit of threads. During development, you want deterministic behavior, not threads.
 
- + it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we have spawn or kill rust coroutines (tasks) on this same thread, these will get rolled back. Using fork is a fairly comprehensive solution, since it has been tuned under the kernel for years.
++ it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we have spawn or kill rust coroutines (tasks) on this same thread, these will get rolled back. Using fork is a fairly comprehensive solution, since it has been tuned under the kernel for years.
 
 Possible disadvantages of this approach:
- - fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. But this will constaint rustxi to not be comprehensive. Comprehensiveness is a non-goal anyway, so this is okay. 80/20 applies.
+- fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. But this will constaint rustxi to not be comprehensive. Comprehensiveness is a non-goal anyway, so this is okay. 80/20 applies.
 
 **/
 
@@ -116,16 +116,16 @@ pub static WNOHANG: c_int = 1;
 #[nolink]
 #[abi = "cdecl"]
 pub mod my_c {
-  use std::libc::types::os::arch::c95::{c_int};
-  use std::libc::types::os::arch::posix88::{pid_t};
-  
-  extern {
-    pub fn kill(pid: pid_t, sig: c_int) -> c_int;
-    pub fn getsid(pid: pid_t) -> c_int;
-    pub fn getpgrp() -> c_int;
-    pub fn setpgid(pid: pid_t, pgid: pid_t) -> c_int;
-    pub fn signal(signum: c_int, handler: i64);
-  }
+    use std::libc::types::os::arch::c95::{c_int};
+    use std::libc::types::os::arch::posix88::{pid_t};
+    
+    extern {
+        pub fn kill(pid: pid_t, sig: c_int) -> c_int;
+        pub fn getsid(pid: pid_t) -> c_int;
+        pub fn getpgrp() -> c_int;
+        pub fn setpgid(pid: pid_t, pgid: pid_t) -> c_int;
+        pub fn signal(signum: c_int, handler: i64);
+    }
 }
 
 
@@ -138,19 +138,19 @@ pub fn copy_buf_to_string(buf: *mut u8, len: uint) -> ~str {
 pub struct Visor {
 
     // the history of commands
-  cmd:  ~[~str],
+    cmd:  ~[~str],
 }
 
 // utility functions from libc
 
 #[fixed_stack_segment]
 fn getpid() -> c_int {
-  unsafe { std::libc::getpid() }
+    unsafe { std::libc::getpid() }
 }
 
 #[fixed_stack_segment]
 fn getppid() -> c_int {
-  unsafe { std::libc::getppid() }
+    unsafe { std::libc::getppid() }
 }
 
 #[fixed_stack_segment]
@@ -160,10 +160,22 @@ fn getsid(pid : c_int) -> c_int {
 
 #[fixed_stack_segment]
 fn getpgrp() -> c_int {
-  unsafe { my_c::getpgrp() }
+    unsafe { my_c::getpgrp() }
 }
 
+#[fixed_stack_segment]
+fn ignore_sigint() {
+    unsafe { my_c::signal(signum::SIGINT, signum::SIG_IGN as i64); }
+}
+
+#[fixed_stack_segment]
+fn deliver_sigint() {
+    unsafe { my_c::signal(signum::SIGINT, signum::SIG_DFL as i64); }
+}
+
+
 static CODEBUF_SIZE : i64 = 4096;
+
 
 impl Visor {
 
@@ -173,7 +185,7 @@ impl Visor {
 
 
     pub fn start(&mut self) {
-    #[fixed_stack_segment]; #[inline(never)];
+        #[fixed_stack_segment]; #[inline(never)];
 
         use std::libc::funcs::posix01::wait::*;
 
@@ -184,15 +196,16 @@ impl Visor {
             }
         }
 
-        unsafe { my_c::signal(signum::SIGINT, signum::SIG_IGN as i64); }
+        // only TRY should get SIGINT (ctrl-c)
+        ignore_sigint();
 
-      let visor_pid : c_int = getpid();
-      let visor_sid : c_int = getsid(visor_pid);
-      let visor_pgrp : c_int = getpgrp();
-
-
-      printfln!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
-
+        let visor_pid : c_int = getpid();
+        let visor_sid : c_int = getsid(visor_pid);
+        let visor_pgrp : c_int = getpgrp();
+        
+        
+        printfln!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
+        
         // setup fd to communicate
         // note that os.rs has Pipe{ input and out } backwards, so
         //  to use them, we have to use them backwards.
@@ -201,8 +214,8 @@ impl Visor {
         let pipe_code = std::os::pipe();
         
 
-      printfln!("my pipe_code is %?", pipe_code);
-
+        printfln!("my pipe_code is %?", pipe_code);
+        
         // I'm visor
         let pid = unsafe { fork() };
         if (pid < 0) { fail!("rustxi visor failure in fork: %s", std::os::last_os_error()); }
@@ -211,7 +224,7 @@ impl Visor {
             // I'm visor still.
             std::os::close(pipe_code.input);
 
-            // read code from stdin, send it on pipe_code
+            // READ LOOP: read code from stdin, send it on pipe_code
             while(true) {
                 
                 // cleanup zombies from when TRY succeeded and killed CUR
@@ -222,7 +235,7 @@ impl Visor {
                 };
 
 	        printf!("%s","<rustxi> ");
-	        let code = stdin().read_line();
+	        let code : ~str = stdin().read_line();
                 
                 self.cmd.push(code.clone());
 
@@ -232,6 +245,11 @@ impl Visor {
                 std::vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
                 buffer.truncate(code.len());
                 printfln!("buffer is '%?' after copy from '%s'", buffer, code);
+
+		if (":exit".equiv(&code)) {
+		  printfln!("[done]");
+		  unsafe { exit(0); }
+		}
 
                 do buffer.as_mut_buf |ptr, len| {
 	            unsafe {
@@ -256,63 +274,69 @@ impl Visor {
 
         // steady-state: I'm CUR
 	while(true) {
-	  printfln!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", getpid() as int, getppid() as int);
+            ignore_sigint();              
 
-	  let pid = unsafe { fork() };
-	  if (pid < 0) { fail!("rustxi visor failure in fork: %s", std::os::last_os_error()); }
-	  if (0 == pid) {
-	      // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
-              unsafe { rustrt::rust_unset_sigprocmask(); }
-              
-	      printfln!("%d: I am TRY: about to request code line. pipecode.input = %d", getpid() as int, pipe_code.input as int);
+	    printfln!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", getpid() as int, getppid() as int);
 
-              let mut buffer = ~[0u8, ..CODEBUF_SIZE];
-              let mut bytes_read : i64 = -1;
-              while (true) {
-                  bytes_read = do buffer.as_mut_buf |ptr, len| {
-	              unsafe {
-                          std::libc::read(pipe_code.input, ptr as *mut std::libc::types::common::c95::c_void, len as u64)
-                      }
-                  };
+	    let pid = unsafe { fork() };
+	    if (pid < 0) { fail!("rustxi visor failure in fork: %s", std::os::last_os_error()); }
+	    if (0 == pid) {
+	        // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
 
-                  if (bytes_read < 0) {
-                      printfln!("read on pipe_code.out failed with errno: %? '%?'", std::os::errno(), std::os::last_os_error());
-                      break;
-                  }
-                  if (bytes_read > 0) { break; }
-              }
+                unsafe { rustrt::rust_unset_sigprocmask(); }
+                deliver_sigint();
 
-              printfln!("bytes_read is %d", bytes_read as int);
-              buffer.truncate(bytes_read as uint);
-//              let code = std::str::from_utf8(buffer);
-              let code = do buffer.as_mut_buf |ptr, _| {
-                  copy_buf_to_string(ptr, bytes_read as uint)
-              };
+	        printfln!("%d: I am TRY: about to request code line. pipecode.input = %d", getpid() as int, pipe_code.input as int);
 
-	      printfln!("%d: TRY: I see code to run: '%s'", getpid() as int, code);
-	      /*
-	      *  here is where call to do the majority of the
-              *  actual work: compile and run the code.
-	      */
-              compile_and_run_code_snippet(code);
+                let mut buffer = ~[0u8, ..CODEBUF_SIZE];
+                let mut bytes_read : i64 = -1;
+                while (true) {
+                    bytes_read = do buffer.as_mut_buf |ptr, len| {
+	                unsafe {
+                            std::libc::read(pipe_code.input, ptr as *mut std::libc::types::common::c95::c_void, len as u64)
+                        }
+                    };
 
-              
-	      printfln!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.", 
-		        getpid() as int);
-              let ppid = getppid();
-	      unsafe { my_c::kill(ppid, std::libc::SIGTERM);  }
+                    if (bytes_read < 0) {
+                        printfln!("read on pipe_code.out failed with errno: %? '%?'", std::os::errno(), std::os::last_os_error());
+                        break;
+                    }
+                    if (bytes_read > 0) { break; }
+                }
 
-              // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
-	      printfln!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
-		        getpid() as int, ppid as int);
+                printfln!("bytes_read is %d", bytes_read as int);
+                buffer.truncate(bytes_read as uint);
+                //              let code = std::str::from_utf8(buffer);
+                let code = do buffer.as_mut_buf |ptr, _| {
+                    copy_buf_to_string(ptr, bytes_read as uint)
+                };
 
-	  } else {
-	    // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
-	    // top of the steady-state loop and try again
-	    std::run::waitpid(pid);
-	    printfln!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.", 
-		      getpid() as int);
-	  }
+	        printfln!("%d: TRY: I see code to run: '%s'", getpid() as int, code);
+	        /*
+	        *  here is where call to do the majority of the
+                *  actual work: compile and run the code.
+	        */
+                compile_and_run_code_snippet(code);
+
+
+                // we become the new CUR, so ignore ctrl-c again.
+                ignore_sigint();              
+	        printfln!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.", 
+		          getpid() as int);
+                let ppid = getppid();
+	        unsafe { my_c::kill(ppid, std::libc::SIGTERM);  }
+
+                // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
+	        printfln!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
+		          getpid() as int, ppid as int);
+
+	    } else {
+	        // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
+	        // top of the steady-state loop and try again
+	        std::run::waitpid(pid);
+	        printfln!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.", 
+		          getpid() as int);
+	    }
 	}
 	
 	
