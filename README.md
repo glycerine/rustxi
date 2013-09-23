@@ -44,14 +44,14 @@ Detailed architecture discussion
 
 There are three processes in the robust, transactional rustxi architecture: VISOR, CUR, and TRY.
 
-First, the grandparent or VISOR -- exists mostly just to give a constant PID to monitor for rusti. The VISOR lives as long as the rusti session is going. The VISOR stores the history of commands executed so far. The VISOR accepts input from the user, and pipes it over to CUR.
+First, the grandparent or VISOR -- exists mostly just to give a constant PID to monitor for rustxi. The VISOR lives as long as the rustxi session is going. The VISOR stores the history of commands executed so far. The VISOR accepts input from the user, and pipes it over to CUR.
 
 Then, there exist in rotation two other processes, two descendent processes of the VISOR. CUR holds the current state after all successful commands in the history have executed. The effects of any unsuccessful code snippets that were compiled and failed, or that were compiled and run and the failed, are completely invisible to CUR. TRY is the forked child of the current CUR, and is used to isolate all failure scenarios.
 
 
 (0) In the beginning:
 
-    Rusti VISOR
+    Rustxi VISOR
        |
       CUR (forks off TRY)
        |
@@ -64,7 +64,7 @@ Then, there exist in rotation two other processes, two descendent processes of t
     
 (1)  Branching on success or fail!()ure: If the new code succeeds then TRY kills CUR, e.g. by doing kill(getppid(), SIGTERM);
 
-     Rusti VISOR
+     Rustxi VISOR
        |
       TRY
       
@@ -74,7 +74,7 @@ Status note aside: currently the part about TRY becoming a child of VISOR is fic
 
 Then TRY becomes the new CUR, here denoted CUR'. CUR' then in turn forks a new repl, TRY', and we goto 0. to begin again, looking like this:
 
-    Rusti VISOR
+    Rustxi VISOR
       |
      CUR'
       |
@@ -85,13 +85,13 @@ Then TRY becomes the new CUR, here denoted CUR'. CUR' then in turn forks a new r
     
 (2) If the new code in TRY fails, then CUR recieves SIGCHLD:
 
-     Rusti VISOR
+     Rustxi VISOR
        |
       CUR
 
 Detail: TRY when testing the new code, failed. hopefully TRY printed an appropriate error message. Optionally we could start/attach gdb (or even be running under gdb already?). In any case, once the optional debug step is done, CUR notes the failure by receiving/handling SIGCHLD, and prints a failure message itself just in case it wasn't already obvious. Then CUR forks a new child, TRY', and we goto 0. to begin again, looking like this:
 
-    Rusti VISOR
+    Rustxi VISOR
       |
      CUR 
       |
