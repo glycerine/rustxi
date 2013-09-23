@@ -117,7 +117,7 @@ I like the fork(2) approach because it provides transactional semantics which me
 
  + it avoids (and requires avoiding) threading. This is a huge win, in my opinion.  Too many projects have fallen into the deep dark pit of threads. During development, you want deterministic behavior, not threads.
 
- + it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we spawn or kill rust coroutines (tasks) on this single-threaded process, these will get rolled back. Using fork is a fairly comprehensive solution. It is simple (a huge win), and fast.
+ + it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions manually (such an effort would be slow to implement and painful to maintain; moreover it is impossible within software to track and rollback many kinds of updates). In contrast, the design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we spawn or kill rust coroutines (tasks) on this single-threaded process, these will get rolled back. Using fork is a fairly comprehensive solution. It is simple (a huge win) and fast.
 
 * minuses. Possible disadvantages of this approach:
 
