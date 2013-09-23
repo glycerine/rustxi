@@ -117,11 +117,11 @@ I like the fork(2) approach because it provides transactional semantics which me
 
  + it avoids (and requires avoiding) threading. This is a huge win, in my opinion.  Too many projects have fallen into the deep dark pit of threads. During development, you want deterministic behavior, not threads.
 
- + it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we spawn or kill rust coroutines (tasks) on this thread thread, these will get rolled back. Using fork is a fairly comprehensive solution, since it has been tuned under the kernel for years. 
+ + it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we spawn or kill rust coroutines (tasks) on this single-threaded process, these will get rolled back. Using fork is a fairly comprehensive solution. It is simple (a huge win), and fast.
 
 * minuses. Possible disadvantages of this approach:
 
- + fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. It does mean rustxi cannot be an exact replica of fully-threaded rustc-produced binary semantics. Rustxi cannot be comprehensive. That is okay. Comprehensiveness is a non-goal. We value 80% of the win for 20% the effort.
+ + fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. It does mean rustxi cannot be an exact replica of fully-threaded rustc-produced binary semantics. Rustxi cannot be comprehensive. That is okay. Comprehensiveness is a non-goal. Pareto's principle applies.
 
 
 * observation: 
