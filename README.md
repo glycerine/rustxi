@@ -51,11 +51,13 @@ Then, there exist in rotation two other processes, two descendent processes of t
 
 (0) In the beginning:
 
-    Rustxi VISOR
+    Rustxi VISOR (forks off CUR)
+       |
+       |  fork
        |
       CUR (forks off TRY)
        |
-       |  fork(2)
+       |  fork
        |
       TRY
     
@@ -78,7 +80,7 @@ Then TRY becomes the new CUR, here denoted CUR'. CUR' then in turn forks a new r
       |
      CUR'
       |
-      | fork(2)
+      | fork
       |
      TRY'
 
@@ -95,7 +97,7 @@ Detail: TRY when testing the new code, failed. hopefully TRY printed an appropri
       |
      CUR 
       |
-      | fork(2)
+      | fork
       |
      TRY'
 
