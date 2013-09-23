@@ -126,7 +126,7 @@ I like the fork(2) approach because it provides transactional semantics which me
 
 * observation: 
 
- + If the rust runtime provided a synchronization barrier checkin-point for all threads, some kind of call that all threads were required to cooperatively call once in while, then multiple threads could also be supported under fork. Otherwise fork will eventually copy a process while some thread is holding the malloc mutex, at which point the forked copy will deadlock on memory allocation.
+ + If the rust runtime provided a synchronization barrier checkin-point for all threads, some kind of call that all threads were required to cooperatively call once in while, then multiple threads could also be supported under fork. Otherwise fork will eventually copy a process while some thread is holding the malloc mutex, at which point the forked copy will deadlock on memory allocation.  If the ruust runtime scheduler could provide a method that causes all threads to barrier, that would be perfect. By calling this method, let's call it request_stop_the_world(), we are telling the scheduler: "hey, we want to stop the world for a moment to fork, so please pause all other running threads and then return to us". Then we could fork sanely even with threads, and possibly even have the scheduler resume all the other threads (if each had done a sigsetjmp before getting to the barrier) once we call start_the_world().  This would be super, as we would have a multithread-capable transactional environment. Note: this would probably still require some kind of cooperative yielding on the part of rust tasks. So not perfect, but really nice for many situations.
 
 
 
