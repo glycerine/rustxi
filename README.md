@@ -9,7 +9,7 @@ the rustxi repl
 
 rustxi is a next generation Rust REPL (read-eval-print-loop). It provides a transactional jit-compiled interpreter for the Rust language. If you make a mistake, you don't loose all your previous hard work. A syntax error, an assert!, or a fail! will not cause you to loose your accumulated data or history.
 
-Rust + Interpreter + transactions (commonly abbreviated TX) = rustxi
+Rust + Transactions (commonly abbreviated TX) + Interpreter = rustxi
 
 
 Rustxi Background
