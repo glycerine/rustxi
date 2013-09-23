@@ -42,7 +42,7 @@ Conclusion: this is a very strong, robust approach.
 Detailed architecture discussion
 --------------------------------
 
-There are three processes in the robust, transactional rustxi architecture: VISOR, CUR, and TRY.
+There are three processes in the rustxi architecture: VISOR, CUR, and TRY.
 
 First, the grandparent or VISOR -- exists mostly just to give a constant PID to monitor for rustxi. The VISOR lives as long as the rustxi session is going. The VISOR stores the history of commands executed so far. The VISOR accepts input from the user, and pipes it over to CUR.
 
