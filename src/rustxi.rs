@@ -234,7 +234,7 @@ impl Visor {
                     std::libc::funcs::posix01::wait::waitpid(-1, &mut zombstatus, WNOHANG)
                 };
 
-	        printf!("%s","<rustxi> ");
+	        printf!("%s","<rustxi use :exit to quit> ");
 	        let code : ~str = stdin().read_line();
                 
                 self.cmd.push(code.clone());
@@ -247,7 +247,7 @@ impl Visor {
                 printfln!("buffer is '%?' after copy from '%s'", buffer, code);
 
 		if (":exit".equiv(&code)) {
-		  printfln!("[done]");
+		  println("[rustxi done]");
 		  unsafe { exit(0); }
 		}
 
