@@ -107,6 +107,9 @@ use std::libc::*;
 use std::os::*;
 use std::io::stdin;
 //use std::run::*;
+use signum::*;
+
+mod signum;
 
 pub static WNOHANG: c_int = 1;
 
@@ -121,6 +124,7 @@ pub mod my_c {
     pub fn getsid(pid: pid_t) -> c_int;
     pub fn getpgrp() -> c_int;
     pub fn setpgid(pid: pid_t, pgid: pid_t) -> c_int;
+    pub fn signal(signum: c_int, handler: i64);
   }
 }
 
@@ -179,6 +183,8 @@ impl Visor {
                 pub fn rust_unset_sigprocmask();
             }
         }
+
+        unsafe { my_c::signal(signum::SIGINT, signum::SIG_IGN as i64); }
 
       let visor_pid : c_int = getpid();
       let visor_sid : c_int = getsid(visor_pid);
