@@ -180,7 +180,7 @@ impl Visor {
         //   then TRY replaces CUR.
 
         // steady-state: I'm CUR
-        while(true) {
+        loop {
             util::ignore_sigint();
 
             printfln!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", util::getpid() as int, util::getppid() as int);
