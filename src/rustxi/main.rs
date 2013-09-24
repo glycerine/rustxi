@@ -158,7 +158,7 @@ impl Visor {
                 buffer.truncate(code.len());
                 debug!("buffer is '%?' after copy from '%s'", buffer, code);
 
-                if (":exit".equiv(&code)) {
+                if ":exit".equiv(&code) {
                     println("[rustxi done]");
                     util::exit(0);
                 }
@@ -249,7 +249,7 @@ impl Visor {
 #[fixed_stack_segment]
 fn compile_and_run_code_snippet(code : &str) {
     // for now, simulate failure half the time.
-    if (util::getpid() % 2 == 0) {
+    if util::getpid() % 2 == 0 {
         debug!("%d: TRY: on code '%s', simulating fail!", util::getpid() as int, code);
         fail!("TRY code failure simulated here with fail!()");
     }
