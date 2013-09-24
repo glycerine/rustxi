@@ -1,100 +1,14 @@
 /**
-*  rustxi: a revamp of rusti-the-repl using fork.
-*
-*  rustxi.rs : explore fork ping-ponging for repl state maintenance
-*   in the case of user error.
-*
-*  author: Jason E. Aten <j.e.aten@gmail.com>
-*  date: 21 Sept 2013
-*  copyright (c) 2013, Jason E. Aten
+*  copyright (c) 2013 Jason E. Aten and Do Nhat Minh
 *  license: the same as the Rust license options: dual MIT/Apache2.
+
+*  rustxi: a revamp of rusti-the-repl using, where we
+*   explore fork ping-ponging for repl state maintenance
+*   in the case of user syntax error or runtime fail!().
+*
+*   See the README.md for detils. 
+*
 * 
-*  We want a single thread... so we can fork and have accurate and
-*  efficient mistake-handling at the repl. Remember the goal is to
-*  rollback from any changes that global.
-*
-*  So here I did a mini spike to evaluate ping-ponging between forked processes.
-*
-*  Outcome: implemented below. Works well. Feels snappy at the prompt. 
-*
-*  Conclusion: this is a very strong, robust approach.
-*
-**/
-
-
-/** 
-Detailed architecture discussion:
-
-There are three processes in the robust, transactional rustxi architecture: VISOR, CUR, and TRY.
-
-First, the grandparent or VISOR -- exists mostly just to give a constant PID to monitor for rustxi. The VISOR lives as long as the rustxi session is going. The VISOR stores the history of commands executed so far. The VISOR accepts input from the user, and pipes it over to CUR.
-
-Then, there exist in rotation two other processes, two descendent processes of the VISOR. CUR holds the current state after all successful commands in the history have executed. The effects of any unsuccessful code snippets that were compiled and failed, or that were compiled and run and the failed, are completely invisible to CUR. TRY is the forked child of the current CUR, and is used to isolate all failure scenarios.
-
-
-0. the beginning:
-
-Rustxi VISOR
-|
-CUR (forks off TRY)
-|
-|  fork(2)
-|
-TRY
-
-
-Branching:
-
-1. If the new code succeeds then TRY kills CUR, e.g. by doing kill(getppid(), SIGTERM);
-
-Rustxi VISOR
-|
-TRY
-
-In detail: TRY, having suceeded (no fail! was called during compiling running the code snippet) kills CUR. CUR is no longer needed, so it dies, taking its old out-of-date state with it.
-
-Then TRY becomes the new CUR, here denoted CUR'. CUR' then in turn forks a new repl, TRY', and we goto 0. to begin again, looking like this:
-
-Rustxi VISOR
-|
-CUR'
-|
-| fork(2)
-|
-TRY'
-
-
-2. If the new code in TRY fails, then CUR recieves SIGCHLD:
-
-Rustxi VISOR
-|
-CUR
-
-Detail: TRY when testing the new code, failed. hopefully TRY printed an appropriate error message. Optionally we could start/attach gdb (or even be running under gdb already?). In any case, once the optional debug step is done, CUR notes the failure by receiving/handling SIGCHLD, and prints a failure message itself just in case it wasn't already obvious. Then CUR forks a new child, TRY', and we goto 0. to begin again, looking like this:
-
-Rustxi VISOR
-|
-CUR 
-|
-| fork(2)
-|
-TRY'
-
-Summary: In this architecture, CUR is the mediator between VISOR and TRY. The purpose of using processes is that we can have inexpensive commit and rollback on failure/fail!() in the already-jitted and now-we-are-running it code. Since the jitted code may make calls into any pre-compiled library and hence make arbitrary changes to the global process state, fork is the only sane way to rollback.
-
-// Additional (nice) option: start gdb on failure of process, so we can view stack traces.
-
-Discussion:
-
-I like the fork(2) approach because
-
-+ it avoids (and requires avoiding) threading. This is a huge win, in my opinion.  Too many projects have fallen into the deep dark pit of threads. During development, you want deterministic behavior, not threads.
-
-+ it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we have spawn or kill rust coroutines (tasks) on this same thread, these will get rolled back. Using fork is a fairly comprehensive solution, since it has been tuned under the kernel for years.
-
-Possible disadvantages of this approach:
-- fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. But this will constaint rustxi to not be comprehensive. Comprehensiveness is a non-goal anyway, so this is okay. 80/20 applies.
-
 **/
 
 
