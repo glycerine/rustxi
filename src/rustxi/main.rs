@@ -202,9 +202,9 @@ impl Visor {
                 printfln!("%d: I am TRY: about to request code line. pipecode.input = %d", util::getpid() as int, pipe_code.input as int);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
-                let mut bytes_read : i64 = -1;
+                let bytes_read : i64 = -1;
                 loop {
-                    bytes_read = do buffer.as_mut_buf |ptr, len| {
+                    let bytes_read = do buffer.as_mut_buf |ptr, len| {
                         unsafe {
                             libc::read(pipe_code.input, ptr as *mut libc::c_void, len as u64)
                         }
@@ -237,7 +237,7 @@ impl Visor {
                 printfln!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.",
                           util::getpid() as int);
                 let ppid = util::getppid();
-                unsafe { util::kill(ppid, libc::SIGTERM);  }
+                util::kill(ppid, libc::SIGTERM);
 
                 // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
                 printfln!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
