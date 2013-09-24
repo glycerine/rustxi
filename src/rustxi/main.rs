@@ -356,8 +356,8 @@ fn single_threaded_main() {
 // if you want to be sure you are running on the main thread, do this:
 #[start]
 #[fixed_stack_segment]
-fn start(argc: int, argv: **u8, crate_map: *u8) -> int {
-    std::rt::start_on_main_thread(argc, argv, crate_map, single_threaded_main)
+fn start(argc: int, argv: **u8) -> int {
+    std::rt::start_on_main_thread(argc, argv, single_threaded_main)
 }
 
 
