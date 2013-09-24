@@ -115,15 +115,12 @@ impl Visor {
     }
 
     pub fn start(&mut self) {
-        #[fixed_stack_segment]; #[inline(never)];
-
         // only TRY should get SIGINT (ctrl-c)
         util::ignore_sigint();
 
         let visor_pid = util::getpid();
         let visor_sid = util::getsid(visor_pid);
         let visor_pgrp = util::getpgrp();
-
 
         printfln!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
 
@@ -133,7 +130,6 @@ impl Visor {
         // correct order would be {out, input}. But os.rs lists {input, out}.
         //
         let pipe_code = os::pipe();
-
 
         printfln!("my pipe_code is %?", pipe_code);
 
@@ -147,10 +143,7 @@ impl Visor {
             loop {
                 // cleanup zombies from when TRY succeeded and killed CUR
                 let mut zombstatus :i32 = 0;
-                //let chpid =
-                unsafe {
-                    std::libc::funcs::posix01::wait::waitpid(-1, &mut zombstatus, 1)
-                };
+                util::waitpid_async(-1, &mut zombstatus);
 
                 print("rustxi> ");
                 let code = io::stdin().read_line();
@@ -166,13 +159,11 @@ impl Visor {
 
                 if (":exit".equiv(&code)) {
                     println("[rustxi done]");
-                    unsafe { libc::exit(0); }
+                    util::exit(0);
                 }
 
                 do buffer.as_mut_buf |ptr, len| {
-                    unsafe {
-                        std::libc::write(pipe_code.out, ptr as *libc::c_void, len as u64);
-                    }
+                    util::write(pipe_code.out, ptr as *libc::c_void, len as u64);
                 }
             }
         } else {
@@ -205,9 +196,7 @@ impl Visor {
                 let bytes_read : i64 = -1;
                 loop {
                     let bytes_read = do buffer.as_mut_buf |ptr, len| {
-                        unsafe {
-                            libc::read(pipe_code.input, ptr as *mut libc::c_void, len as u64)
-                        }
+                        util::read(pipe_code.input, ptr as *mut libc::c_void, len as u64)
                     };
 
                     if bytes_read < 0 {

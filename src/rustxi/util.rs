@@ -23,6 +23,11 @@ pub fn waitpid(pid: libc::pid_t, status: &mut libc::c_int) -> libc::pid_t {
 }
 
 #[fixed_stack_segment]
+pub fn waitpid_async(pid: libc::pid_t, status: &mut libc::c_int) -> libc::pid_t {
+    unsafe { ::std::libc::funcs::posix01::wait::waitpid(pid, status, 1) }
+}
+
+#[fixed_stack_segment]
 pub fn getpid() -> libc::pid_t {
     unsafe { libc::getpid() }
 }
@@ -72,4 +77,19 @@ pub fn fork() -> libc::pid_t {
         ll::rust_unset_sigprocmask();
         pid
     }
+}
+
+#[fixed_stack_segment]
+pub fn exit(status: libc::c_int) -> ! {
+    unsafe { libc::exit(status) }
+}
+
+#[fixed_stack_segment]
+pub fn read(fd: libc::c_int, buf: *mut libc::c_void, count: libc::size_t) -> libc::ssize_t {
+    unsafe { libc::read(fd, buf, count) }
+}
+
+#[fixed_stack_segment]
+pub fn write(fd: libc::c_int, buf: *libc::c_void, count: libc::size_t) -> libc::ssize_t {
+    unsafe { libc::write(fd, buf, count) }
 }
