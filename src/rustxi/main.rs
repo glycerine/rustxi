@@ -97,7 +97,7 @@ Possible disadvantages of this approach:
 
 **/
 
-use std::{io, libc, os, run, vec};
+use std::{io, libc, os, vec};
 
 mod callgraph;
 mod signum;
@@ -233,7 +233,8 @@ impl Visor {
             } else {
                 // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
                 // top of the steady-state loop and try again
-                run::waitpid(pid);
+                let mut status = -1 as libc::c_int;
+                util::waitpid(pid, &mut status);
                 debug!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.",
                           util::getpid() as int);
             }
