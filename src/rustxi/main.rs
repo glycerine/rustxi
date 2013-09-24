@@ -122,7 +122,7 @@ impl Visor {
         let visor_sid = util::getsid(visor_pid);
         let visor_pgrp = util::getpgrp();
 
-        printfln!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
+        debug!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
 
         // setup fd to communicate
         // note that os.rs has Pipe{ input and out } backwards, so
@@ -131,7 +131,7 @@ impl Visor {
         //
         let pipe_code = os::pipe();
 
-        printfln!("my pipe_code is %?", pipe_code);
+        debug!("my pipe_code is %?", pipe_code);
 
         // I'm visor
         let pid = util::fork();
@@ -150,12 +150,12 @@ impl Visor {
 
                 self.cmd.push(code.clone());
 
-                printfln!("visor is: %?", self);
+                debug!("visor is: %?", self);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
                 buffer.truncate(code.len());
-                printfln!("buffer is '%?' after copy from '%s'", buffer, code);
+                debug!("buffer is '%?' after copy from '%s'", buffer, code);
 
                 if (":exit".equiv(&code)) {
                     println("[rustxi done]");
@@ -169,7 +169,6 @@ impl Visor {
         } else {
             // I'm CUR after first fork, setup pipes on my end:
             os::close(pipe_code.out);
-            println("");
         }
 
         // There are two processes that are descendants of VISOR: CUR and TRY.
@@ -183,14 +182,14 @@ impl Visor {
         loop {
             util::ignore_sigint();
 
-            printfln!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", util::getpid() as int, util::getppid() as int);
+            debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", util::getpid() as int, util::getppid() as int);
 
             let pid = util::fork();
             if pid == 0 {
                 // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
                 util::deliver_sigint();
 
-                printfln!("%d: I am TRY: about to request code line. pipecode.input = %d", util::getpid() as int, pipe_code.input as int);
+                debug!("%d: I am TRY: about to request code line. pipecode.input = %d", util::getpid() as int, pipe_code.input as int);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 let mut bytes_read: i64;
@@ -200,20 +199,19 @@ impl Visor {
                     };
 
                     if bytes_read < 0 {
-                        printfln!("read on pipe_code.out failed with errno: %? '%?'", os::errno(), os::last_os_error());
+                        debug!("read on pipe_code.out failed with errno: %? '%?'", os::errno(), os::last_os_error());
                         break;
                     }
                     if bytes_read > 0 { break; }
                 }
 
-                printfln!("bytes_read is %d", bytes_read as int);
+                debug!("bytes_read is %d", bytes_read as int);
                 buffer.truncate(bytes_read as uint);
-                // let code = std::str::from_utf8(buffer);
                 let code = do buffer.as_mut_buf |ptr, _| {
                     util::copy_buf_to_string(ptr, bytes_read as uint)
                 };
 
-                printfln!("%d: TRY: I see code to run: '%s'", util::getpid() as int, code);
+                debug!("%d: TRY: I see code to run: '%s'", util::getpid() as int, code);
                 /*
                  *  here is where call to do the majority of the
                  *  actual work: compile and run the code.
@@ -223,20 +221,20 @@ impl Visor {
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
-                printfln!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.",
+                debug!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.",
                           util::getpid() as int);
                 let ppid = util::getppid();
                 util::kill(ppid, libc::SIGTERM);
 
                 // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
-                printfln!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
+                debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
                           util::getpid() as int, ppid as int);
 
             } else {
                 // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
                 // top of the steady-state loop and try again
                 run::waitpid(pid);
-                printfln!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.",
+                debug!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.",
                           util::getpid() as int);
             }
         }
@@ -251,12 +249,11 @@ impl Visor {
 fn compile_and_run_code_snippet(code : &str) {
     // for now, simulate failure half the time.
     if (util::getpid() % 2 == 0) {
-        printfln!("%d: TRY: on code '%s', simulating fail!", util::getpid() as int, code);
+        debug!("%d: TRY: on code '%s', simulating fail!", util::getpid() as int, code);
         fail!("TRY code failure simulated here with fail!()");
     }
-    printfln!("%d: TRY: on code '%s', simulating success.", util::getpid() as int, code);
+    debug!("%d: TRY: on code '%s', simulating success.", util::getpid() as int, code);
 }
-
 
 #[fixed_stack_segment]
 fn single_threaded_main() {
