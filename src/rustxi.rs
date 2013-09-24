@@ -118,7 +118,7 @@ impl Visor {
         let visor_pgrp : c_int = getpgrp();
         
         
-        printfln!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
+        debug!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
         
         // setup fd to communicate
         // note that os.rs has Pipe{ input and out } backwards, so
@@ -128,7 +128,7 @@ impl Visor {
         let pipe_code = std::os::pipe();
         
 
-        printfln!("my pipe_code is %?", pipe_code);
+        debug!("my pipe_code is %?", pipe_code);
         
         // I'm visor
         let pid = unsafe { fork() };
@@ -148,19 +148,20 @@ impl Visor {
                     std::libc::funcs::posix01::wait::waitpid(-1, &mut zombstatus, WNOHANG)
                 };
 
-	        printf!("%s","<rustxi use :exit to quit> ");
+	        printf!("%s","<rustxi use :exit to quit>");
 	        let code : ~str = stdin().read_line();
                 
                 self.cmd.push(code.clone());
 
-                printfln!("visor is: %?", self);
+                debug!("visor is: %?", self);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 std::vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
                 buffer.truncate(code.len());
-                printfln!("buffer is '%?' after copy from '%s'", buffer, code);
+                debug!("buffer is '%?' after copy from '%s'", buffer, code);
 
-		if (":exit".equiv(&code)) {
+		let trimcode = code.trim();
+		if (":exit".equiv(&trimcode)) {
 		  println("[rustxi done]");
 		  unsafe { exit(0); }
 		}
@@ -190,7 +191,7 @@ impl Visor {
 	while(true) {
             ignore_sigint();              
 
-	    printfln!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", getpid() as int, getppid() as int);
+	    debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", getpid() as int, getppid() as int);
 
 	    let pid = unsafe { fork() };
 	    if (pid < 0) { fail!("rustxi visor failure in fork: %s", std::os::last_os_error()); }
@@ -200,7 +201,7 @@ impl Visor {
                 unsafe { rustrt::rust_unset_sigprocmask(); }
                 deliver_sigint();
 
-	        printfln!("%d: I am TRY: about to request code line. pipecode.input = %d", getpid() as int, pipe_code.input as int);
+	        debug!("%d: I am TRY: about to request code line. pipecode.input = %d", getpid() as int, pipe_code.input as int);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 let mut bytes_read : i64 = -1;
@@ -212,20 +213,20 @@ impl Visor {
                     };
 
                     if (bytes_read < 0) {
-                        printfln!("read on pipe_code.out failed with errno: %? '%?'", std::os::errno(), std::os::last_os_error());
+                        debug!("read on pipe_code.out failed with errno: %? '%?'", std::os::errno(), std::os::last_os_error());
                         break;
                     }
                     if (bytes_read > 0) { break; }
                 }
 
-                printfln!("bytes_read is %d", bytes_read as int);
+                debug!("bytes_read is %d", bytes_read as int);
                 buffer.truncate(bytes_read as uint);
                 //              let code = std::str::from_utf8(buffer);
                 let code = do buffer.as_mut_buf |ptr, _| {
                     copy_buf_to_string(ptr, bytes_read as uint)
                 };
 
-	        printfln!("%d: TRY: I see code to run: '%s'", getpid() as int, code);
+	        debug!("%d: TRY: I see code to run: '%s'", getpid() as int, code);
 	        /*
 	        *  here is where call to do the majority of the
                 *  actual work: compile and run the code.
@@ -235,20 +236,20 @@ impl Visor {
 
                 // we become the new CUR, so ignore ctrl-c again.
                 ignore_sigint();              
-	        printfln!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.", 
+	        debug!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.", 
 		          getpid() as int);
                 let ppid = getppid();
 	        unsafe { my_c::kill(ppid, std::libc::SIGTERM);  }
 
                 // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
-	        printfln!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
+	        debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
 		          getpid() as int, ppid as int);
 
 	    } else {
 	        // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
 	        // top of the steady-state loop and try again
 	        std::run::waitpid(pid);
-	        printfln!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.", 
+	        debug!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.", 
 		          getpid() as int);
 	    }
 	}
@@ -292,11 +293,11 @@ fn myfork() -> i32 {
         if pid < 0 {
             fail!("failure in fork: %s", std::os::last_os_error());
         } else if pid > 0 {
-            printfln!("parent sees pid >0: child is %d. Parent is %d", pid as int, std::libc::getpid() as int);
+            debug!("parent sees pid >0: child is %d. Parent is %d", pid as int, std::libc::getpid() as int);
             return pid;
         }
 
-        printfln!("child sees pid == 0: child is %d, actual pid is %d", pid as int, std::libc::getpid() as int);
+        debug!("child sees pid == 0: child is %d, actual pid is %d", pid as int, std::libc::getpid() as int);
 
         rustrt::rust_unset_sigprocmask();
 
@@ -313,11 +314,11 @@ fn compile_and_run_code_snippet(code : &str) {
 
     // for now, simulate failure half the time.
     if (getpid() % 2 == 0) {
-	printfln!("%d: TRY: on code '%s', simulating fail!", getpid() as int, code);
+	debug!("%d: TRY: on code '%s', simulating fail!", getpid() as int, code);
         fail!("TRY code failure simulated here with fail!()");
     }
 
-    printfln!("%d: TRY: on code '%s', simulating success.", getpid() as int, code);
+    debug!("%d: TRY: on code '%s', simulating success.", getpid() as int, code);
 
 }
 
