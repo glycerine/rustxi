@@ -99,6 +99,7 @@ Possible disadvantages of this approach:
 
 use std::{io, libc, os, run, vec};
 
+mod callgraph;
 mod signum;
 mod util;
 
@@ -217,7 +218,6 @@ impl Visor {
                  *  actual work: compile and run the code.
                  */
                 compile_and_run_code_snippet(code);
-
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
