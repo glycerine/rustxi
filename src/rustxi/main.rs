@@ -193,9 +193,9 @@ impl Visor {
                 printfln!("%d: I am TRY: about to request code line. pipecode.input = %d", util::getpid() as int, pipe_code.input as int);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
-                let bytes_read : i64 = -1;
+                let mut bytes_read: i64;
                 loop {
-                    let bytes_read = do buffer.as_mut_buf |ptr, len| {
+                    bytes_read = do buffer.as_mut_buf |ptr, len| {
                         util::read(pipe_code.input, ptr as *mut libc::c_void, len as u64)
                     };
 
