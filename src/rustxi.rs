@@ -14,15 +14,10 @@
 
 extern mod std;
 
-//use std::libc::size_t;
-// use std::libc::sleep;
-//use std::libc::funcs::posix88::unistd::fork;
 use std::cast;
 use std::libc::*;
 use std::os::*;
 use std::io::stdin;
-//use std::run::*;
-use signum::*;
 
 mod signum;
 
