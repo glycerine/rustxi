@@ -18,6 +18,7 @@ use std::cast;
 use std::libc::*;
 use std::os::*;
 use std::io::stdin;
+//use std::c_str::*;
 
 mod signum;
 
@@ -396,8 +397,11 @@ fn single_threaded_main() {
 #[start]
 #[fixed_stack_segment]
 fn start(argc: int, argv: **u8) -> int {
-    // TODO: setenv(cstring("RUST_THREADS"),cstring("1")); // so we don't get extra
-    // background threads.
+
+    // so we don't get extra threads.
+    setenv("RUST_THREADS", "1");
+
+    // and we ourselves run on the first thread.
     std::rt::start_on_main_thread(argc, argv, single_threaded_main)
 }
 
