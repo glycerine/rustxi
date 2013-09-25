@@ -34,6 +34,7 @@ fn help() -> &str {
 .?                   show help
 .q                   exit rustxi
 .h                   show line history
+.c                   correct history only
 .s file              source file -- XXTODO
 .. {commands}        system(commands) -- XXTODO";
 
@@ -147,6 +148,16 @@ impl Visor {
                     ".q" => util::process_group_exit(),
                     ".?" => {
                         println(help());
+                        loop;
+                    },
+                    ".c" => {
+                        // correct history only... failed commands commented out.
+                        let mut i = 0;
+                        for c in self.cmd.iter() {
+                            if (self.failed[i]) { printf!("%s", "//!: ") }
+                            printfln!("%s", *c);
+                            i = i + 1;
+                        }
                         loop;
                     },
                     ".h" => {
