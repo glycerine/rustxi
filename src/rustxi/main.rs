@@ -1,10 +1,9 @@
 /**
 *  copyright (c) 2013 Jason E. Aten and Do Nhat Minh
 *  license: the same as the Rust license options: dual MIT/Apache2.
-
+*
 *  rustxi: a revamp of rusti-the-repl using, where we
-*   explore fork ping-ponging for repl state maintenance
-*   in the case of user syntax error or runtime fail!().
+*   use fork ping-ponging for transactional repl state maintenance.
 *
 *   See the README.md for detils. 
 *
@@ -108,12 +107,15 @@ static CODEBUF_SIZE : i64 = 4096;
 
 // help
 fn help() -> ~str {
-  ":help    show this help\n" +
-  ":quit    exit rustxi"
+  ".help                show this help\n" +
+  ".quit                exit rustxi\n" +
+  ".h                   show line history\n" +
+  ".s file              source file\n" +
+  ".. {commands}        system(commands)"
 }
 
 fn banner() -> &str {
-  "rustxi: a transactional jit-based repl. :help for help; :quit or ctrl-d to exit."
+  "rustxi: a transactional jit-based repl; .help for help; .quit or ctrl-d to exit."
 }
 
 fn prompt() -> &str {
@@ -139,10 +141,12 @@ fn pipe32reply(from: &str, replymsg: &str, fd: c_int) -> i64 {
   assert!(bytes_written == replymsg.len() as i64);
   
   if (bytes_written < 0) {
-    fail!("%d %s: read on pipe_code.out failed with errno: %? '%?'", getpid() as int, from, std::os::errno(), std::os::last_os_error());
+    fail!("%d %s: read on pipe_code.out failed with errno: %? '%?'", 
+          getpid() as int, from, std::os::errno(), std::os::last_os_error());
   }
   
-  debug!("%d %s: sent replymsg of len '%?' with content '%s'", getpid() as int, from, replymsg.len(), replymsg);
+  debug!("%d %s: sent replymsg of len '%?' with content '%s'", 
+         getpid() as int, from, replymsg.len(), replymsg);
 
   bytes_written
 }	
@@ -187,7 +191,8 @@ impl Visor {
         let visor_pgrp : c_int = getpgrp();
         
         
-        debug!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
+        debug!("visor called with pid:%?    sid:%?    pgrp:%?", 
+               visor_pid, visor_sid, visor_pgrp);
         
         // setup fd to communicate
         // note that os.rs has Pipe{ input and out } backwards, so
@@ -234,33 +239,56 @@ impl Visor {
 
 		let trimcode = code.trim();
 		if ("".equiv(&trimcode) && stdin().eof()) {
-		  debug!("%d: VISOR: I see EOF", getpid() as int);
-		  println("");
-
-		  // send EOF on pipe_code to TRY, so it knows to shut itself down.
-		  std::os::close(pipe_code.out);
-		  std::os::close(pipe_reply.input);
-
-		  // that's not working yet, so cleanup for sure with allquit().
-		  self.allquit();
-		  unsafe { exit(0); }
+		    debug!("%d: VISOR: I see EOF", getpid() as int);
+		    println("");
+                    
+		    // send EOF on pipe_code to TRY, so it knows to shut itself down.
+		    std::os::close(pipe_code.out);
+		    std::os::close(pipe_reply.input);
+                    
+		    // that's not working yet, so cleanup for sure with allquit().
+		    self.allquit();
+		    unsafe { exit(0); }
 		}
 		else
-		if ("".equiv(&trimcode)) { loop; }
+		    if ("".equiv(&trimcode)) { loop; }
 		else
-		if (":quit".equiv(&trimcode)) {
-		  self.allquit();
+		    if (".quit".equiv(&trimcode)) {
+		    self.allquit();
 		}
 		else
-		if (":help".equiv(&trimcode)) {
-		  println(help());
-		  loop;
+		    if (".help".equiv(&trimcode)) {
+                    self.cmd.pop();
+		    println(help());
+		    loop;
+		}
+		else
+		    if (".h".equiv(&trimcode)) {
+                    self.cmd.pop();
+                    for c in self.cmd.iter() {
+                        printfln!("%s", *c); 
+                    }
+		    loop;
+		}
+		else
+		    if (".s".equiv(&trimcode)) {
+                    self.cmd.pop();
+                    printfln!("TODO: implement .s <file> sourcing.");
+		    loop;
+		}
+		else
+		    if ("..".equiv(&trimcode)) {
+                    self.cmd.pop();
+                    printfln!("TODO: implement system(cmd) shell outs.");
+		    loop;
 		}
 
 		// send code over to TRY
                 do buffer.as_mut_buf |ptr, len| {
 	            unsafe {
-                        std::libc::write(pipe_code.out, ptr as *std::libc::types::common::c95::c_void, len as u64);
+                        std::libc::write(pipe_code.out, 
+                                         ptr as *std::libc::types::common::c95::c_void, 
+                                         len as u64);
                     }
                 }
 
@@ -271,19 +299,25 @@ impl Visor {
 
                 let bytesread = do replybuf.as_mut_buf |ptr, len| {
 		    unsafe {
-		      std::libc::read(pipe_reply.input, ptr as *mut std::libc::types::common::c95::c_void, len as u64)
+		      std::libc::read(pipe_reply.input, 
+                                      ptr as *mut std::libc::types::common::c95::c_void, 
+                                      len as u64)
 		    }
 		  };
 
 		if (bytesread < 0) {
-		  fail!("%d: I am VISOR: visor failed to read from code_pipe: %s", getpid() as int, std::os::last_os_error());
+		  fail!("%d: I am VISOR: visor failed to read from code_pipe: %s", 
+                        getpid() as int, 
+                        std::os::last_os_error());
 		}
 
                 let replystr = do replybuf.as_mut_buf |ptr, _| {
                     copy_buf_to_string(ptr, bytesread as uint)
                 };
 
-		debug!("%d: I am VISOR: I got an '%d' byte message back: '%s'", getpid() as int, bytesread as int, replystr);
+		debug!("%d: I am VISOR: I got an '%d' byte message back: '%s'", 
+                       getpid() as int, 
+                       bytesread as int, replystr);
 
 
             }
@@ -307,31 +341,39 @@ impl Visor {
 	while(true) {
             ignore_sigint();              
 
-	    debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", getpid() as int, getppid() as int);
+	    debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d",
+                   getpid() as int, 
+                   getppid() as int);
 
 	    let pid = unsafe { fork() };
 	    if (pid < 0) { fail!("rustxi visor failure in fork: %s", std::os::last_os_error()); }
 	    if (0 == pid) {
-	        // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
+	        // I am TRY, child of CUR. I try new 
+                // code out and succeed (and thence kill CUR and become CUR), or die.
 
                 unsafe { rustrt::rust_unset_sigprocmask(); }
                 // deliver_sigint();
                 install_sigint_ctrl_c_handler();
 
-	        debug!("%d: I am TRY: about to request code line.", getpid() as int);
+	        debug!("%d: I am TRY: about to request code line.", 
+                       getpid() as int);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 let mut bytes_read : i64 = -1;
                 while (true) {
                     bytes_read = do buffer.as_mut_buf |ptr, len| {
 	                unsafe {
-                            std::libc::read(pipe_code.input, ptr as *mut std::libc::types::common::c95::c_void, len as u64)
+                            std::libc::read(pipe_code.input, 
+                                            ptr as *mut std::libc::types::common::c95::c_void, 
+                                            len as u64)
                         }
                     };
 
                     if (bytes_read < 0) {
-                        fail!("read on pipe_code.out failed with errno: %? '%?'", std::os::errno(), std::os::last_os_error());
-                        //debug!("read on pipe_code.out failed with errno: %? '%?'", std::os::errno(), std::os::last_os_error());
+                        fail!("read on pipe_code.out failed with errno: %? '%?'", 
+                              std::os::errno(), std::os::last_os_error());
+                        //debug!("read on pipe_code.out failed with errno: %? '%?'", 
+                        //       std::os::errno(), std::os::last_os_error());
 			// break;
                     }
                     if (bytes_read > 0) { break; }
@@ -354,23 +396,26 @@ impl Visor {
 
                 // we become the new CUR, so ignore ctrl-c again.
                 ignore_sigint();
-	        debug!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.", 
+	        debug!("%d: TRY succeeded, killing old CUR and I will become the new CUR.", 
 		          getpid() as int);
                 let ppid = getppid();
 	        unsafe { my_c::kill(ppid, std::libc::SIGTERM);  }
 
-                // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
+                // we are already a part of the visor's group, 
+                //   just we have init (pid 1) as a parent now.
 	        debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
 		          getpid() as int, ppid as int);
 
 		pipe32reply("TRY", "success", pipe_reply.out);
 
 	    } else {
-	        // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
+	        // I am CUR. I wait for TRY to finish. If TRY succeeds I never 
+                // wake up. If TRY fails, I goto the
 	        // top of the steady-state loop and try again
 	        std::run::waitpid(pid);
-	        debug!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.", 
-		          getpid() as int);
+	        debug!("%d: CUR saw TRY process exit, must have failed. %s",
+		       getpid() as int,
+                       "Going to top of loop to spawn a new try.");
 
 		// pipe "failed" to VISOR:
 
