@@ -1,13 +1,12 @@
+use std::libc::{c_int, c_void};
 
 // linux signal numbers, from
 //  /usr/include/x86_64-linux-gnu/bits/signum.h
 
-    pub type c_int = i32;
+    pub static  SIG_ERR   : *c_void = -1 as *c_void;   /* Error return.   */
+    pub static  SIG_DFL   : *c_void = 0 as *c_void;    /* Default action. */
+    pub static  SIG_IGN   : *c_void = 1 as *c_void;    /* Ignore signal.  */
 
-    pub static  SIG_ERR   : c_int = -1;      /* Error return.  */
-    pub static  SIG_DFL   : c_int = 0;       /* Default action.  */
-    pub static  SIG_IGN   : c_int = 1;       /* Ignore signal.  */
-    
     /* Signals.  */
     pub static  SIGHUP    : c_int = 1;       /* Hangup (POSIX).  */
     pub static  SIGINT    : c_int = 2;       /* Interrupt (ANSI).  */
