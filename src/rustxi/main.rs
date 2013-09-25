@@ -32,7 +32,7 @@ static CODEBUF_SIZE: i64 = 4096;
 fn help() -> &str {
     static HELP: &'static str = "\
 .?                   show help
-.quit                exit rustxi
+.q                   exit rustxi
 .h                   show line history
 .s file              source file -- XXTODO
 .. {commands}        system(commands) -- XXTODO";
@@ -41,8 +41,8 @@ fn help() -> &str {
 }
 
 fn banner() -> &str {
-    static BANNER: &'static str = "rustxi: a transactional jit-based repl;\
-                                   .? for help; .quit or ctrl-d to exit.";
+    static BANNER: &'static str = "rustxi: a transactional jit-based repl; \
+                                   .? for help; .q or ctrl-d to exit.";
     BANNER
 }
 
@@ -68,6 +68,10 @@ fn install_sigint_ctrl_c_handler() {
 struct Visor {
     /// history of commands
     cmd: ~[~str],
+
+    // history of fail/success
+    failed: ~[bool],
+
     /// function dependency graph
     callgraph: callgraph::BothWayGraph,
 }
@@ -76,6 +80,7 @@ impl Visor {
     pub fn new() -> Visor {
         Visor{
             cmd: ~[],
+            failed: ~[],
             callgraph: callgraph::BothWayGraph::new(),
         }
     }
@@ -122,19 +127,12 @@ impl Visor {
                 print(prompt());
                 let code = io::stdin().read_line();
 
-                self.cmd.push(code.clone());
-
-                debug!("visor is: %?", self);
-
-                let mut buffer = ~[0u8, ..CODEBUF_SIZE];
-                vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
-                buffer.truncate(code.len());
-                //debug!("buffer is '%?' after copy from '%s'", buffer, code);
-
                 let trimmed_code = code.trim();
-                // match meta commands
+                // match meta commands: keep these distinguished by the
+                // first character for ease of typing and parsing.
                 match trimmed_code {
                     "" if io::stdin().eof() => {
+                        // ctrl-d should exit so we can send files on stdin eventually.
                         debug!("%d: VISOR: I see EOF", util::getpid() as int);
                         println("");
 
@@ -146,31 +144,40 @@ impl Visor {
                         util::process_group_exit();
                     },
                     "" => loop,
-                    ".quit" => util::process_group_exit(),
+                    ".q" => util::process_group_exit(),
                     ".?" => {
-                        self.cmd.pop();
                         println(help());
                         loop;
                     },
                     ".h" => {
-                        self.cmd.pop();
                         for c in self.cmd.iter() {
                             printfln!("%s", *c);
                         }
                         loop;
                     },
                     ".s" => {
-                        self.cmd.pop();
                         printfln!("TODO: implement .s <file> sourcing.");
                         loop;
                     },
                     ".." => {
-                        self.cmd.pop();
                         printfln!("TODO: implement system(cmd) shell outs.");
                         loop;
                     },
-                    _ => (),
+                    _ => {
+                        // not a meta command: add to history
+                        self.cmd.push(code.clone());
+                    },
                 }
+
+
+
+                debug!("visor is: %?", self);
+
+                let mut buffer = ~[0u8, ..CODEBUF_SIZE];
+                vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
+                buffer.truncate(code.len());
+                //debug!("buffer is '%?' after copy from '%s'", buffer, code);
+
 
                 // send code over to TRY
                 do buffer.as_mut_buf |ptr, len| {
@@ -197,10 +204,17 @@ impl Visor {
                     util::copy_buf_to_string(ptr, bytesread as uint)
                 };
 
+                match replystr {
+                    ~"failed"  => { self.failed.push(true); },
+                    ~"success" => { self.failed.push(false); },
+                    _ => {
+                        fail!("VISOR doesn't recongize reply for CUR/TRY: %s", replystr);
+                    }
+                }
+
                 debug!("%d: I am VISOR: I got an '%d' byte message back: '%s'",
                        util::getpid() as int,
                        bytesread as int, replystr);
-
 
             }
         } else {
@@ -267,8 +281,8 @@ impl Visor {
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
-                debug!("%d: TRY succeeded in running the code, killing old CUR\
- and I will become the new CUR.",
+                debug!("%d: TRY succeeded in running the code, killing old CUR \
+                        and I will become the new CUR.",
                 util::getpid() as int);
                 let ppid = util::getppid();
                 util::kill(ppid, libc::SIGTERM);
@@ -347,7 +361,7 @@ fn pipe32reply(from: &str, replymsg: &str, fd: libc::c_int) -> i64 {
               util::getpid() as int, from, os::errno(), os::last_os_error());
     }
 
-    debug!("%d %s: sent replymsg of len '%?' with content '%s'",
+    debug!("%d: %s: sent replymsg of len '%?' with content '%s'",
            util::getpid() as int, from, replymsg.len(), replymsg);
 
     bytes_written
@@ -364,7 +378,7 @@ fn single_threaded_main() {
 #[fixed_stack_segment]
 fn start(argc: int, argv: **u8) -> int {
     // so we don't get extra threads.
-    // setenv("RUST_THREADS", "1");
+    std::os::setenv("RUST_THREADS", "1");
 
     // and we ourselves run on the first thread.
     rt::start_on_main_thread(argc, argv, single_threaded_main)
