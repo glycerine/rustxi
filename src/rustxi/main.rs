@@ -23,6 +23,33 @@ mod util;
 
 static CODEBUF_SIZE: i64 = 4096;
 
+// help(), banner(), prompt():
+// generate user-facing help strings. Since these may be dynamic or
+// localized or both, these need to be function calls not constants.
+// Since prompt() is called by the ctrl-c signal handler, it must
+// be global and not a method.
+//
+fn help() -> &str {
+    static HELP: &'static str = "\
+.?                   show help
+.quit                exit rustxi
+.h                   show line history
+.s file              source file -- XXTODO
+.. {commands}        system(commands) -- XXTODO";
+
+    HELP
+}
+
+fn banner() -> &str {
+    static BANNER: &'static str = "rustxi: a transactional jit-based repl;\
+                                   .? for help; .quit or ctrl-d to exit.";
+    BANNER
+}
+
+fn prompt() -> &str {
+    static PROMPT: &'static str = "rustxi> ";
+    PROMPT
+}
 
 #[fixed_stack_segment]
 #[abi = "cdecl"]
@@ -51,32 +78,6 @@ impl Visor {
             cmd: ~[],
             callgraph: callgraph::BothWayGraph::new(),
         }
-    }
-
-    // help(), banner(), prompt():
-    // generate user-facing help strings. Since these may be dynamic or
-    // localized or both, these need to be function calls not constants.
-    //
-    fn help() -> &str {
-        static HELP: &'static str = "\
-.?                   show help
-.quit                exit rustxi
-.h                   show line history
-.s file              source file -- XXTODO
-.. {commands}        system(commands) -- XXTODO";
-
-        HELP
-    }
-
-    fn banner() -> &str {
-        static BANNER: &'static str = "rustxi: a transactional jit-based repl;\
- .? for help; .quit or ctrl-d to exit.";
-        BANNER
-    }
-
-    fn prompt() -> &str {
-        static PROMPT: &'static str = "rustxi> ";
-        PROMPT
     }
 
 
