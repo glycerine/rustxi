@@ -23,31 +23,6 @@ mod util;
 
 static CODEBUF_SIZE: i64 = 4096;
 
-// help(), banner(), prompt():
-// generate user-facing help strings. Since these may be dynamic or
-// localized or both, these need to be function calls not constants.
-//
-fn help() -> &str {
-
-static HELP: &'static str = "\
-.?                   show help
-.quit                exit rustxi
-.h                   show line history
-.s file              source file -- XXTODO
-.. {commands}        system(commands) -- XXTODO";
-
-  HELP
-}
-
-fn banner() -> &str {
-    static BANNER: &'static str = "rustxi: a transactional jit-based repl; .? for help; .quit or ctrl-d to exit.";
-    BANNER
-}
-
-fn prompt() -> &str {
-    static PROMPT: &'static str = "rustxi> ";
-    PROMPT
-}
 
 #[fixed_stack_segment]
 #[abi = "cdecl"]
@@ -77,6 +52,33 @@ impl Visor {
             callgraph: callgraph::BothWayGraph::new(),
         }
     }
+
+    // help(), banner(), prompt():
+    // generate user-facing help strings. Since these may be dynamic or
+    // localized or both, these need to be function calls not constants.
+    //
+    fn help() -> &str {
+        static HELP: &'static str = "\
+.?                   show help
+.quit                exit rustxi
+.h                   show line history
+.s file              source file -- XXTODO
+.. {commands}        system(commands) -- XXTODO";
+
+        HELP
+    }
+
+    fn banner() -> &str {
+        static BANNER: &'static str = "rustxi: a transactional jit-based repl;\
+ .? for help; .quit or ctrl-d to exit.";
+        BANNER
+    }
+
+    fn prompt() -> &str {
+        static PROMPT: &'static str = "rustxi> ";
+        PROMPT
+    }
+
 
     pub fn start(&mut self) {
         // only TRY should get SIGINT (ctrl-c)
@@ -226,7 +228,8 @@ impl Visor {
 
             let pid = util::fork();
             if pid == 0 {
-                // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
+                // I am TRY, child of CUR. I try new code out and succeed 
+                // (and thence kill CUR and become CUR), or die.
                 // TODO: needed? where? util::ll::rust_unset_sigprocmask();
                 install_sigint_ctrl_c_handler();
 
@@ -241,7 +244,8 @@ impl Visor {
                     };
 
                     if bytes_read < 0 {
-                        debug!("read on pipe_code.out failed with errno: %? '%?'", os::errno(), os::last_os_error());
+                        debug!("read on pipe_code.out failed with errno: %? '%?'", 
+                               os::errno(), os::last_os_error());
                         break;
                     }
                     if bytes_read > 0 { break; }
@@ -262,12 +266,14 @@ impl Visor {
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
-                debug!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.",
+                debug!("%d: TRY succeeded in running the code, killing old CUR\
+ and I will become the new CUR.",
                 util::getpid() as int);
                 let ppid = util::getppid();
                 util::kill(ppid, libc::SIGTERM);
 
-                // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
+                // we are already a part of the visor's group, 
+                // just we have init (pid 1) as a parent now.
                 debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
                 util::getpid() as int, ppid as int);
 
@@ -299,7 +305,8 @@ impl Visor {
     fn compile_and_run_code_snippet(&mut self, code: &str) {
         match code.find_str(": ") {
             None => {
-                debug!("%d: TRY: on code '%s', cannot find \": \"", util::getpid() as int, code);
+                debug!("%d: TRY: on code '%s', cannot find \": \"", 
+                       util::getpid() as int, code);
                 fail!("TRY code failure: parse error");
             },
             Some(pos) => {
@@ -312,7 +319,8 @@ impl Visor {
                     print!("{:s} ", *f);
                 }
                 println("");
-                debug!("%d: TRY: on code '%s', success.", util::getpid() as int, code);
+                debug!("%d: TRY: on code '%s', success.", 
+                       util::getpid() as int, code);
             },
         }
     }
