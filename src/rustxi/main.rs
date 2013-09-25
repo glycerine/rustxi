@@ -26,7 +26,7 @@ pub static WNOHANG: c_int = 1;
 #[nolink]
 #[abi = "cdecl"]
 pub mod my_c {
-    use std::libc::types::os::arch::c95::{c_int};
+    use std::libc::types::os::arch::c95::{c_int, c_schar};
     use std::libc::types::os::arch::posix88::{pid_t};
     use std::libc::types::common::c95::{FILE};
     
@@ -37,6 +37,9 @@ pub mod my_c {
         pub fn setpgid(pid: pid_t, pgid: pid_t) -> c_int;
         pub fn signal(signum: c_int, handler: i64);
         pub fn clearerr(fd : *FILE);
+        pub fn getenv(name: *mut c_schar) -> *c_schar;
+        pub fn setenv(name: *c_schar, value: *c_schar, overwrite: c_int) -> c_int;
+        pub fn unsetenv(name: *c_schar) -> c_int;
     }
 }
 
@@ -51,6 +54,7 @@ pub struct Visor {
 
     // the history of commands
     cmd:  ~[~str],
+
 }
 
 // utility functions from libc
@@ -89,11 +93,13 @@ fn deliver_sigint() {
 #[abi = "cdecl"]
 fn ctrl_c_handler(_signum: c_int) {
   printfln!("%s"," [ctrl-c]");
+    printf!("%s",prompt());
+
 }
 
 #[fixed_stack_segment]
 fn install_sigint_ctrl_c_handler() {
-  unsafe { my_c::signal(signum::SIGINT, cast::transmute(&ctrl_c_handler)); }
+  unsafe { my_c::signal(signum::SIGINT, cast::transmute(ctrl_c_handler)); }
 }
 
 
@@ -107,6 +113,10 @@ fn help() -> ~str {
 
 fn banner() -> &str {
   "rustxi: a transactional jit-based repl. :help for help; :quit or ctrl-d to exit."
+}
+
+fn prompt() -> &str {
+  "rustxi> "
 }
 
 // reply with a message at most 32 bytes.
@@ -159,7 +169,7 @@ impl Visor {
 
         use std::libc::funcs::posix01::wait::*;
 
-	install_sigint_ctrl_c_handler();
+	// core dumping, for now commentout: install_sigint_ctrl_c_handler();
 
         mod rustrt {
             #[abi = "cdecl"]
@@ -169,7 +179,7 @@ impl Visor {
         }
 
         // only TRY should get SIGINT (ctrl-c)
-	//        ignore_sigint();
+	ignore_sigint();
 
         let visor_pid : c_int = getpid();
         let visor_sid : c_int = getsid(visor_pid);
@@ -209,7 +219,7 @@ impl Visor {
                     std::libc::funcs::posix01::wait::waitpid(-1, &mut zombstatus, WNOHANG)
                 };
 
-	        printf!("%s","rustxi> ");
+	        printf!("%s",prompt());
 	        let code : ~str = stdin().read_line();
                 
                 self.cmd.push(code.clone());
@@ -304,7 +314,8 @@ impl Visor {
 	        // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
 
                 unsafe { rustrt::rust_unset_sigprocmask(); }
-                deliver_sigint();
+                // deliver_sigint();
+                install_sigint_ctrl_c_handler();
 
 	        debug!("%d: I am TRY: about to request code line.", getpid() as int);
 
@@ -385,6 +396,8 @@ fn single_threaded_main() {
 #[start]
 #[fixed_stack_segment]
 fn start(argc: int, argv: **u8) -> int {
+    // TODO: setenv(cstring("RUST_THREADS"),cstring("1")); // so we don't get extra
+    // background threads.
     std::rt::start_on_main_thread(argc, argv, single_threaded_main)
 }
 
