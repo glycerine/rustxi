@@ -1,11 +1,15 @@
 use std::{libc, os, str};
+use std::libc::{c_int, c_void};
+use std::libc::types::os::arch::posix88::{pid_t};
 
 mod signum;
 
 #[nolink]
 #[abi = "cdecl"]
 mod ll {
-    use std::libc::{c_int, c_void, pid_t};
+    use std::libc::{c_int, c_void, c_schar};
+    use std::libc::types::os::arch::posix88::{pid_t};
+    use std::libc::types::common::c95::{FILE};
 
     extern {
         pub fn kill(pid: pid_t, sig: c_int) -> c_int;
@@ -14,8 +18,13 @@ mod ll {
         pub fn setpgid(pid: pid_t, pgid: pid_t) -> c_int;
         pub fn signal(signum: c_int, handler: *c_void);
         pub fn rust_unset_sigprocmask();
+        pub fn clearerr(fd : *FILE);
+        pub fn getenv(name: *mut c_schar) -> *c_schar;
+        pub fn setenv(name: *c_schar, value: *c_schar, overwrite: c_int) -> c_int;
+        pub fn unsetenv(name: *c_schar) -> c_int;
     }
 }
+
 
 #[fixed_stack_segment]
 pub fn waitpid(pid: libc::pid_t, status: &mut libc::c_int) -> libc::pid_t {
@@ -74,7 +83,6 @@ pub fn fork() -> libc::pid_t {
         if pid < 0 {
             fail!("failure in fork: %s", os::last_os_error());
         }
-        ll::rust_unset_sigprocmask();
         pid
     }
 }

@@ -14,19 +14,54 @@ extern mod extra;
 
 use std::{io, libc, os, vec, rt};
 use callgraph::CallGraph;
+use std::libc::{c_int, c_void};
+use std::cast;
 
 mod callgraph;
 mod signum;
 mod util;
 
 static CODEBUF_SIZE: i64 = 4096;
-static HELP: &'static str = ".help                show this help
+
+// help(), banner(), prompt():
+// generate user-facing help strings. Since these may be dynamic or
+// localized or both, these need to be function calls not constants.
+//
+fn help() -> &str {
+
+static HELP: &'static str = "
+.?                   show help
 .quit                exit rustxi
-.h                   show line histor
-.s file              source file
-.. {commands}        system(commands)";
-static BANNER: &'static str = "rustxi: a transactional jit-based repl; .help for help; .quit or ctrl-d to exit.";
-static PROMPT: &'static str = "rustxi> ";
+.h                   show line history
+.s file              source file -- XXTODO
+.. {commands}        system(commands) -- XXTODO";
+
+  HELP
+}
+
+fn banner() -> &str {
+    static BANNER: &'static str = "rustxi: a transactional jit-based repl; .help for help; .quit or ctrl-d to exit.";
+    BANNER
+}
+
+fn prompt() -> &str {
+    static PROMPT: &'static str = "rustxi> ";
+    PROMPT
+}
+
+#[fixed_stack_segment]
+#[abi = "cdecl"]
+fn ctrl_c_handler(_signum: c_int) {
+  printfln!("%s"," [ctrl-c]");
+    printf!("%s",prompt());
+
+}
+
+#[fixed_stack_segment]
+fn install_sigint_ctrl_c_handler() {
+  unsafe { util::ll::signal(signum::SIGINT, cast::transmute(ctrl_c_handler)); }
+}
+
 
 struct Visor {
     /// history of commands
@@ -56,22 +91,24 @@ impl Visor {
         debug!("visor called with pid:%?    sid:%?    pgrp:%?",
                visor_pid, visor_sid, visor_pgrp);
 
+        //
         // setup fd to communicate
-        // note that os.rs has Pipe{ input and out } backwards, so
-        //  to use them, we have to use them backwards.
-        // correct order would be {out, input}. But os.rs lists {input, out}.
+        // note that os.rs has Pipe{ input and out }, and the naming of
+        // input and out may confusing; think of stdin and stdout in this case.
+        // To use them you want to read from input, and write to out.
         //
         let pipe_code = os::pipe();
         let pipe_reply = os::pipe();
 
         // I'm visor
         let pid = util::fork();
+
         if pid > 0 {
             // I'm visor still.
             os::close(pipe_code.input);
             os::close(pipe_reply.out);
 
-            println(BANNER);
+            println(banner());
 
             // READ LOOP: read code from stdin, send it on pipe_code
             loop {
@@ -79,7 +116,7 @@ impl Visor {
                 let mut zombstatus :i32 = 0;
                 util::waitpid_async(-1, &mut zombstatus);
 
-                print(PROMPT);
+                print(prompt());
                 let code = io::stdin().read_line();
 
                 self.cmd.push(code.clone());
@@ -107,9 +144,9 @@ impl Visor {
                     },
                     "" => loop,
                     ".quit" => util::process_group_exit(),
-                    ".help" => {
+                    ".?" => {
                         self.cmd.pop();
-                        println(HELP);
+                        println(help());
                         loop;
                     },
                     ".h" => {
@@ -167,6 +204,9 @@ impl Visor {
             // I'm CUR after first fork, setup pipes on my end:
             os::close(pipe_code.out);
             os::close(pipe_reply.input);
+
+            // TODO: needed? util::ll::rust_unset_sigprocmask();
+
         }
 
         // There are two processes that are descendants of VISOR: CUR and TRY.
@@ -187,9 +227,8 @@ impl Visor {
             let pid = util::fork();
             if pid == 0 {
                 // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
-                util::deliver_sigint();
-                // deliver_sigint();
-                // install_sigint_ctrl_c_handler();
+                // TODO: needed? where? util::ll::rust_unset_sigprocmask();
+                install_sigint_ctrl_c_handler();
 
                 debug!("%d: I am TRY: about to request code line.",
                        util::getpid() as int);
