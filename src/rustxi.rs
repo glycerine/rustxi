@@ -17,6 +17,7 @@ extern mod std;
 //use std::libc::size_t;
 // use std::libc::sleep;
 //use std::libc::funcs::posix88::unistd::fork;
+use std::cast;
 use std::libc::*;
 use std::os::*;
 use std::io::stdin;
@@ -32,6 +33,7 @@ pub static WNOHANG: c_int = 1;
 pub mod my_c {
     use std::libc::types::os::arch::c95::{c_int};
     use std::libc::types::os::arch::posix88::{pid_t};
+    use std::libc::types::common::c95::{FILE};
     
     extern {
         pub fn kill(pid: pid_t, sig: c_int) -> c_int;
@@ -39,6 +41,7 @@ pub mod my_c {
         pub fn getpgrp() -> c_int;
         pub fn setpgid(pid: pid_t, pgid: pid_t) -> c_int;
         pub fn signal(signum: c_int, handler: i64);
+        pub fn clearerr(fd : *FILE);
     }
 }
 
@@ -87,8 +90,29 @@ fn deliver_sigint() {
     unsafe { my_c::signal(signum::SIGINT, signum::SIG_DFL as i64); }
 }
 
+#[fixed_stack_segment]
+#[abi = "cdecl"]
+fn ctrl_c_handler(_signum: c_int) {
+  printfln!("%s"," [ctrl-c]");
+}
+
+#[fixed_stack_segment]
+fn install_sigint_ctrl_c_handler() {
+  unsafe { my_c::signal(signum::SIGINT, cast::transmute(&ctrl_c_handler)); }
+}
+
 
 static CODEBUF_SIZE : i64 = 4096;
+
+// help
+fn help() -> ~str {
+  ":help    show this help\n" +
+  ":quit    exit rustxi"
+}
+
+fn banner() -> &str {
+  "rustxi: a transactional jit-based repl. :help for help; :quit or ctrl-d to exit."
+}
 
 // reply with a message at most 32 bytes.
 #[fixed_stack_segment]
@@ -125,11 +149,22 @@ impl Visor {
         Visor{cmd: ~[]}
     }
 
+    pub fn allquit(&mut self) {
+      #[fixed_stack_segment]; #[inline(never)];
+      unsafe { 
+	// send SIGTERM to all processes in my process group
+	my_c::kill(0, std::libc::SIGTERM);
+	exit(0); 
+      }
+    }
+
 
     pub fn start(&mut self) {
         #[fixed_stack_segment]; #[inline(never)];
 
         use std::libc::funcs::posix01::wait::*;
+
+	install_sigint_ctrl_c_handler();
 
         mod rustrt {
             #[abi = "cdecl"]
@@ -139,7 +174,7 @@ impl Visor {
         }
 
         // only TRY should get SIGINT (ctrl-c)
-        ignore_sigint();
+	//        ignore_sigint();
 
         let visor_pid : c_int = getpid();
         let visor_sid : c_int = getsid(visor_pid);
@@ -167,6 +202,8 @@ impl Visor {
 	    std::os::close(pipe_code.input);
 	    std::os::close(pipe_reply.out);
 
+	    println(banner());
+
             // READ LOOP: read code from stdin, send it on pipe_code
             while(true) {
                 
@@ -177,7 +214,7 @@ impl Visor {
                     std::libc::funcs::posix01::wait::waitpid(-1, &mut zombstatus, WNOHANG)
                 };
 
-	        printf!("%s","<rustxi use :quit to quit> ");
+	        printf!("%s","rustxi> ");
 	        let code : ~str = stdin().read_line();
                 
                 self.cmd.push(code.clone());
@@ -190,13 +227,28 @@ impl Visor {
                 //debug!("buffer is '%?' after copy from '%s'", buffer, code);
 
 		let trimcode = code.trim();
+		if ("".equiv(&trimcode) && stdin().eof()) {
+		  debug!("%d: VISOR: I see EOF", getpid() as int);
+		  println("");
+
+		  // send EOF on pipe_code to TRY, so it knows to shut itself down.
+		  std::os::close(pipe_code.out);
+		  std::os::close(pipe_reply.input);
+
+		  // that's not working yet, so cleanup for sure with allquit().
+		  self.allquit();
+		  unsafe { exit(0); }
+		}
+		else
+		if ("".equiv(&trimcode)) { loop; }
+		else
 		if (":quit".equiv(&trimcode)) {
-		  println("[rustxi exiting]");
-		  unsafe { 
-		    // send SIGTERM to all processes in my process group
-		    my_c::kill(0, std::libc::SIGTERM);
-		    exit(0); 
-		  }
+		  self.allquit();
+		}
+		else
+		if (":help".equiv(&trimcode)) {
+		  println(help());
+		  loop;
 		}
 
 		// send code over to TRY
@@ -234,7 +286,7 @@ impl Visor {
             // I'm CUR after first fork, setup pipes on my end:
 	    std::os::close(pipe_code.out);
 	    std::os::close(pipe_reply.input);
-	    println!("");
+	    //println!("");
 	    unsafe { rustrt::rust_unset_sigprocmask(); }
         }
 	
@@ -337,8 +389,8 @@ fn single_threaded_main() {
 // if you want to be sure you are running on the main thread, do this:
 #[start]
 #[fixed_stack_segment]
-fn start(argc: int, argv: **u8, crate_map: *u8) -> int {
-    std::rt::start_on_main_thread(argc, argv, crate_map, single_threaded_main)
+fn start(argc: int, argv: **u8) -> int {
+    std::rt::start_on_main_thread(argc, argv, single_threaded_main)
 }
 
 
@@ -352,19 +404,14 @@ fn compile_and_run_code_snippet(code : &str) {
 
     // for now, simulate failure half the time.
     if (getpid() % 2 == 0) {
-	printfln!("%d: TRY: on code '%s', simulating fail!", getpid() as int, code);
-        fail!("TRY code failure simulated here with fail!()");
+	debug!("%d: TRY: on code '%s', simulating fail!", getpid() as int, code);
+        fail!("%d: TRY code failure simulated here with fail!()", getpid() as int);
     }
 
-    printfln!("%d: TRY: on code '%s', simulating success.", getpid() as int, code);
+    debug!("%d: TRY: on code '%s', simulating success.", getpid() as int, code);
 
 }
 
-#[fixed_stack_segment]
-#[abi = "cdecl"]
-fn ctrl_c_handler(_signum: c_int) {
-  printfln!("%s"," [ctrl-c]");
-}
 
 #[fixed_stack_segment]
 fn setup_ctrl_c_handler() {
