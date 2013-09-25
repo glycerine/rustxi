@@ -1,1 +1,4 @@
-license: same as the Rust language license: dual MIT/Apache 2.
+License: same as the Rust language license options: dual MIT/Apache 2.
+
+For the library libedit/: BSD license; see libedit/LICENSE and
+the top of the .c source code files for details.
