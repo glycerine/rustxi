@@ -29,7 +29,7 @@ static CODEBUF_SIZE: i64 = 4096;
 //
 fn help() -> &str {
 
-static HELP: &'static str = "
+static HELP: &'static str = "\
 .?                   show help
 .quit                exit rustxi
 .h                   show line history
@@ -40,7 +40,7 @@ static HELP: &'static str = "
 }
 
 fn banner() -> &str {
-    static BANNER: &'static str = "rustxi: a transactional jit-based repl; .help for help; .quit or ctrl-d to exit.";
+    static BANNER: &'static str = "rustxi: a transactional jit-based repl; .? for help; .quit or ctrl-d to exit.";
     BANNER
 }
 
