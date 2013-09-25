@@ -10,7 +10,7 @@ MANDIR=@mandir@
 LIBDIR=@libdir@
 INCDIR = @includedir@
 INSTALL=@INSTALL@
-CFLAGS=@CFLAGS@
+CFLAGS=@CFLAGS@ -fPIC
 
 srcdir=@srcdir@
 .CURDIR=@top_srcdir@
