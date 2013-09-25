@@ -97,7 +97,10 @@ Possible disadvantages of this approach:
 
 **/
 
+extern mod extra;
+
 use std::{io, libc, os, vec};
+use callgraph::CallGraph;
 
 mod callgraph;
 mod signum;
@@ -105,14 +108,19 @@ mod util;
 
 static CODEBUF_SIZE : i64 = 4096;
 
-pub struct Visor {
+struct Visor {
     /// history of commands
     cmd:  ~[~str],
+    /// function dependency graph
+    callgraph: callgraph::BothWayGraph,
 }
 
 impl Visor {
     pub fn new() -> Visor {
-        Visor{cmd: ~[]}
+        Visor{
+            cmd: ~[],
+            callgraph: callgraph::BothWayGraph::new(),
+        }
     }
 
     pub fn start(&mut self) {
@@ -131,14 +139,17 @@ impl Visor {
         // correct order would be {out, input}. But os.rs lists {input, out}.
         //
         let pipe_code = os::pipe();
+        let pipe_ipc = os::pipe();
 
         debug!("my pipe_code is %?", pipe_code);
+        debug!("my pipe_ipc is %?", pipe_ipc);
 
         // I'm visor
         let pid = util::fork();
         if pid > 0 {
             // I'm visor still.
             os::close(pipe_code.input);
+            os::close(pipe_ipc.out);
 
             // READ LOOP: read code from stdin, send it on pipe_code
             loop {
@@ -146,6 +157,10 @@ impl Visor {
                 let mut zombstatus :i32 = 0;
                 util::waitpid_async(-1, &mut zombstatus);
 
+                let mut buffer_ipc = ~[0u8];
+                do buffer_ipc.as_mut_buf |ptr, len| {
+                    util::read(pipe_ipc.input, ptr as *mut libc::c_void, len as u64);
+                }
                 print("rustxi> ");
                 let code = io::stdin().read_line();
 
@@ -170,6 +185,7 @@ impl Visor {
         } else {
             // I'm CUR after first fork, setup pipes on my end:
             os::close(pipe_code.out);
+            os::close(pipe_ipc.input);
         }
 
         // There are two processes that are descendants of VISOR: CUR and TRY.
@@ -191,6 +207,11 @@ impl Visor {
                 util::deliver_sigint();
 
                 debug!("%d: I am TRY: about to request code line. pipecode.input = %d", util::getpid() as int, pipe_code.input as int);
+                // before requesting code, ask VISOR to print the prompt
+                let mut buffer_ipc = ~[0u8];
+                do buffer_ipc.as_mut_buf |ptr, len| {
+                    util::write(pipe_ipc.out, ptr as *libc::c_void, len as u64);
+                }
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 let mut bytes_read: i64;
@@ -217,18 +238,18 @@ impl Visor {
                  *  here is where call to do the majority of the
                  *  actual work: compile and run the code.
                  */
-                compile_and_run_code_snippet(code);
+                self.compile_and_run_code_snippet(code);
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
                 debug!("%d: TRY succeeded in running the code, killing old CUR and I will become the new CUR.",
-                          util::getpid() as int);
+                util::getpid() as int);
                 let ppid = util::getppid();
                 util::kill(ppid, libc::SIGTERM);
 
                 // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
                 debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
-                          util::getpid() as int, ppid as int);
+                util::getpid() as int, ppid as int);
 
             } else {
                 // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
@@ -236,24 +257,35 @@ impl Visor {
                 let mut status = -1 as libc::c_int;
                 util::waitpid(pid, &mut status);
                 debug!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.",
-                          util::getpid() as int);
+                util::getpid() as int);
             }
         }
     } // end start()
-}
 
-/**
- *  here is where the heart of the jit-repl will be: here
- *   we actually compile and run the code.
- **/
-#[fixed_stack_segment]
-fn compile_and_run_code_snippet(code : &str) {
-    // for now, simulate failure half the time.
-    if util::getpid() % 2 == 0 {
-        debug!("%d: TRY: on code '%s', simulating fail!", util::getpid() as int, code);
-        fail!("TRY code failure simulated here with fail!()");
+    /**
+     *  here is where the heart of the jit-repl will be: here
+     *   we actually compile and run the code.
+     **/
+    fn compile_and_run_code_snippet(&mut self, code: &str) {
+        match code.find_str(": ") {
+            None => {
+                debug!("%d: TRY: on code '%s', cannot find \": \"", util::getpid() as int, code);
+                fail!("TRY code failure: parse error");
+            },
+            Some(pos) => {
+                let func = code.slice_to(pos).to_owned();
+                let deps: ~[&str] = code.slice_from(pos + 2).trim()
+                                        .split_iter(',').map(|s| s.trim())
+                                        .collect();
+                let affected = self.callgraph.update(func, deps);
+                for &f in affected.iter() {
+                    print!("{:s} ", *f);
+                }
+                println("");
+                debug!("%d: TRY: on code '%s', success.", util::getpid() as int, code);
+            },
+        }
     }
-    debug!("%d: TRY: on code '%s', simulating success.", util::getpid() as int, code);
 }
 
 #[fixed_stack_segment]
