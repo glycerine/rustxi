@@ -1,101 +1,14 @@
 /**
- *  rustxi: a revamp of rusti-the-repl using fork.
- *
- *  rustxi.rs : explore fork ping-ponging for repl state maintenance
- *   in the case of user error.
- *
- *  author: Jason E. Aten <j.e.aten@gmail.com>
- *  date: 21 Sept 2013
- *  copyright (c) 2013, Jason E. Aten
+ *  copyright (c) 2013 Jason E. Aten and Do Nhat Minh
  *  license: the same as the Rust license options: dual MIT/Apache2.
  *
- *  We want a single thread... so we can fork and have accurate and
- *  efficient mistake-handling at the repl. Remember the goal is to
- *  rollback from any changes that global.
+ *  rustxi: a revamp of rusti-the-repl using, where we
+ *   use fork ping-ponging for transactional repl state maintenance.
  *
- *  So here I did a mini spike to evaluate ping-ponging between forked processes.
+ *   See the README.md for detils. 
  *
- *  Outcome: implemented below. Works well. Feels snappy at the prompt.
- *
- *  Conclusion: this is a very strong, robust approach.
- *
+ * 
  **/
-
-
-/**
-Detailed architecture discussion:
-
-There are three processes in the robust, transactional rustxi architecture: VISOR, CUR, and TRY.
-
-First, the grandparent or VISOR -- exists mostly just to give a constant PID to monitor for rustxi. The VISOR lives as long as the rustxi session is going. The VISOR stores the history of commands executed so far. The VISOR accepts input from the user, and pipes it over to CUR.
-
-Then, there exist in rotation two other processes, two descendent processes of the VISOR. CUR holds the current state after all successful commands in the history have executed. The effects of any unsuccessful code snippets that were compiled and failed, or that were compiled and run and the failed, are completely invisible to CUR. TRY is the forked child of the current CUR, and is used to isolate all failure scenarios.
-
-
-0. the beginning:
-
-Rustxi VISOR
-|
-CUR (forks off TRY)
-|
-|  fork(2)
-|
-TRY
-
-
-Branching:
-
-1. If the new code succeeds then TRY kills CUR, e.g. by doing kill(getppid(), SIGTERM);
-
-Rustxi VISOR
-|
-TRY
-
-In detail: TRY, having suceeded (no fail! was called during compiling running the code snippet) kills CUR. CUR is no longer needed, so it dies, taking its old out-of-date state with it.
-
-Then TRY becomes the new CUR, here denoted CUR'. CUR' then in turn forks a new repl, TRY', and we goto 0. to begin again, looking like this:
-
-Rustxi VISOR
-|
-CUR'
-|
-| fork(2)
-|
-TRY'
-
-
-2. If the new code in TRY fails, then CUR recieves SIGCHLD:
-
-Rustxi VISOR
-|
-CUR
-
-Detail: TRY when testing the new code, failed. hopefully TRY printed an appropriate error message. Optionally we could start/attach gdb (or even be running under gdb already?). In any case, once the optional debug step is done, CUR notes the failure by receiving/handling SIGCHLD, and prints a failure message itself just in case it wasn't already obvious. Then CUR forks a new child, TRY', and we goto 0. to begin again, looking like this:
-
-Rustxi VISOR
-|
-CUR
-|
-| fork(2)
-|
-TRY'
-
-Summary: In this architecture, CUR is the mediator between VISOR and TRY. The purpose of using processes is that we can have inexpensive commit and rollback on failure/fail!() in the already-jitted and now-we-are-running it code. Since the jitted code may make calls into any pre-compiled library and hence make arbitrary changes to the global process state, fork is the only sane way to rollback.
-
-// Additional (nice) option: start gdb on failure of process, so we can view stack traces.
-
-Discussion:
-
-I like the fork(2) approach because
-
-+ it avoids (and requires avoiding) threading. This is a huge win, in my opinion.  Too many projects have fallen into the deep dark pit of threads. During development, you want deterministic behavior, not threads.
-
-+ it leverages the hardware Memory Management Unit and virtual memory support from the kernel, so we don't have to reimplement transactions (slow to run and painful to do so, and will be far from comprehensive). The design using fork gives us fast and comprehensive rollback. If we call into C code that manipulates global variables, these get rolled back. If we close or open file handles, these get rolled back. If we have spawn or kill rust coroutines (tasks) on this same thread, these will get rolled back. Using fork is a fairly comprehensive solution, since it has been tuned under the kernel for years.
-
-Possible disadvantages of this approach:
-- fork only works if you only ever have one thread.  Not a problem, since this is what sanity during development wants anyway. But this will constaint rustxi to not be comprehensive. Comprehensiveness is a non-goal anyway, so this is okay. 80/20 applies.
-
-**/
 
 extern mod extra;
 
@@ -106,7 +19,17 @@ mod callgraph;
 mod signum;
 mod util;
 
-static CODEBUF_SIZE : i64 = 4096;
+static CODEBUF_SIZE: i64 = 4096;
+
+static HELP: &'static str = ".help                show this help\n" +
+  ".quit                exit rustxi\n" +
+  ".h                   show line history\n" +
+  ".s file              source file\n" +
+  ".. {commands}        system(commands)";
+
+static BANNER: &'static str = "rustxi: a transactional jit-based repl; .help for help; .quit or ctrl-d to exit.";
+
+static PROMPT: &'static str = "rustxi> ";
 
 struct Visor {
     /// history of commands
@@ -131,7 +54,10 @@ impl Visor {
         let visor_sid = util::getsid(visor_pid);
         let visor_pgrp = util::getpgrp();
 
-        debug!("visor called with pid:%?    sid:%?    pgrp:%?", visor_pid, visor_sid, visor_pgrp);
+        // core dumping, for now commentout: install_sigint_ctrl_c_handler();
+
+        debug!("visor called with pid:%?    sid:%?    pgrp:%?", 
+               visor_pid, visor_sid, visor_pgrp);
 
         // setup fd to communicate
         // note that os.rs has Pipe{ input and out } backwards, so
@@ -139,17 +65,16 @@ impl Visor {
         // correct order would be {out, input}. But os.rs lists {input, out}.
         //
         let pipe_code = os::pipe();
-        let pipe_ipc = os::pipe();
-
-        debug!("my pipe_code is %?", pipe_code);
-        debug!("my pipe_ipc is %?", pipe_ipc);
-
+        let pipe_reply = os::pipe();
+        
         // I'm visor
         let pid = util::fork();
         if pid > 0 {
             // I'm visor still.
             os::close(pipe_code.input);
-            os::close(pipe_ipc.out);
+            os::close(pipe_reply.out);
+
+            println(BANNER);
 
             // READ LOOP: read code from stdin, send it on pipe_code
             loop {
@@ -157,13 +82,9 @@ impl Visor {
                 let mut zombstatus :i32 = 0;
                 util::waitpid_async(-1, &mut zombstatus);
 
-                let mut buffer_ipc = ~[0u8];
-                do buffer_ipc.as_mut_buf |ptr, len| {
-                    util::read(pipe_ipc.input, ptr as *mut libc::c_void, len as u64);
-                }
-                print("rustxi> ");
-                let code = io::stdin().read_line();
-
+                println(PROMPT);
+                let code : ~str = os::stdin().read_line();
+                
                 self.cmd.push(code.clone());
 
                 debug!("visor is: %?", self);
@@ -171,21 +92,92 @@ impl Visor {
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
                 buffer.truncate(code.len());
-                debug!("buffer is '%?' after copy from '%s'", buffer, code);
+                //debug!("buffer is '%?' after copy from '%s'", buffer, code);
 
-                if ":exit".equiv(&code) {
-                    println("[rustxi done]");
-                    util::exit(0);
-                }
+		let trimcode = code.trim();
+		if ("".equiv(&trimcode) && stdin().eof()) {
+		    debug!("%d: VISOR: I see EOF", getpid() as int);
+		    println("");
+                    
+		    // send EOF on pipe_code to TRY, so it knows to shut itself down.
+		    std::os::close(pipe_code.out);
+		    std::os::close(pipe_reply.input);
+                    
+		    // that's not working yet, so cleanup for sure with allquit().
+		    self.allquit();
+		    unsafe { exit(0); }
+		}
+		else
+		    if ("".equiv(&trimcode)) { loop; }
+		else
+		    if (".quit".equiv(&trimcode)) {
+		    self.allquit();
+		}
+		else
+		    if (".help".equiv(&trimcode)) {
+                    self.cmd.pop();
+		    println(help());
+		    loop;
+		}
+		else
+		    if (".h".equiv(&trimcode)) {
+                    self.cmd.pop();
+                    for c in self.cmd.iter() {
+                        printfln!("%s", *c); 
+                    }
+		    loop;
+		}
+		else
+		    if (".s".equiv(&trimcode)) {
+                    self.cmd.pop();
+                    printfln!("TODO: implement .s <file> sourcing.");
+		    loop;
+		}
+		else
+		    if ("..".equiv(&trimcode)) {
+                    self.cmd.pop();
+                    printfln!("TODO: implement system(cmd) shell outs.");
+		    loop;
+		}
 
+		// send code over to TRY
                 do buffer.as_mut_buf |ptr, len| {
                     util::write(pipe_code.out, ptr as *libc::c_void, len as u64);
                 }
+
+		// wait for reply
+	        debug!("%d: I am VISOR: waiting for more, success, or failed", getpid() as int);
+		// wait for "more" (from TRY) or "done" (from TRY) or "failed" (from CUR)
+                let mut replybuf = ~[0u8, ..8];
+
+                let bytesread = do replybuf.as_mut_buf |ptr, len| {
+		    unsafe {
+		      std::libc::read(pipe_reply.input, 
+                                      ptr as *mut std::libc::types::common::c95::c_void, 
+                                      len as u64)
+		    }
+		  };
+
+		if (bytesread < 0) {
+		  fail!("%d: I am VISOR: visor failed to read from code_pipe: %s", 
+                        getpid() as int, 
+                        std::os::last_os_error());
+		}
+
+                let replystr = do replybuf.as_mut_buf |ptr, _| {
+                    copy_buf_to_string(ptr, bytesread as uint)
+                };
+
+		debug!("%d: I am VISOR: I got an '%d' byte message back: '%s'", 
+                       getpid() as int, 
+                       bytesread as int, replystr);
+
+
             }
         } else {
             // I'm CUR after first fork, setup pipes on my end:
             os::close(pipe_code.out);
-            os::close(pipe_ipc.input);
+            os::close(pipe_reply.input);
         }
 
         // There are two processes that are descendants of VISOR: CUR and TRY.
@@ -199,19 +191,21 @@ impl Visor {
         loop {
             util::ignore_sigint();
 
-            debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d", util::getpid() as int, util::getppid() as int);
+	    debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d",
+                   getpid() as int, 
+                   getppid() as int);
 
             let pid = util::fork();
             if pid == 0 {
                 // I am TRY, child of CUR. I try new code out and succeed (and thence kill CUR and become CUR), or die.
                 util::deliver_sigint();
 
-                debug!("%d: I am TRY: about to request code line. pipecode.input = %d", util::getpid() as int, pipe_code.input as int);
-                // before requesting code, ask VISOR to print the prompt
-                let mut buffer_ipc = ~[0u8];
-                do buffer_ipc.as_mut_buf |ptr, len| {
-                    util::write(pipe_ipc.out, ptr as *libc::c_void, len as u64);
-                }
+                unsafe { rustrt::rust_unset_sigprocmask(); }
+                // deliver_sigint();
+                install_sigint_ctrl_c_handler();
+
+	        debug!("%d: I am TRY: about to request code line.", 
+                       getpid() as int);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 let mut bytes_read: i64;
@@ -249,17 +243,27 @@ impl Visor {
 
                 // we are already a part of the visor's group, just we have init (pid 1) as a parent now.
                 debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
-                util::getpid() as int, ppid as int);
+                       util::getpid() as int, ppid as int);
 
-            } else {
-                // I am CUR. I wait for TRY to finish. If TRY succeeds I never wake up. If TRY fails, I goto the
-                // top of the steady-state loop and try again
-                let mut status = -1 as libc::c_int;
-                util::waitpid(pid, &mut status);
-                debug!("%d: CUR saw TRY process exit, must have failed. Going to top of loop to spawn a new try.",
-                util::getpid() as int);
-            }
-        }
+		pipe32reply("TRY", "success", pipe_reply.out);
+
+	    } else {
+	        // I am CUR. I wait for TRY to finish. If TRY succeeds I never 
+                // wake up. If TRY fails, I goto the
+	        // top of the steady-state loop and try again
+	        std::run::waitpid(pid);
+	        debug!("%d: CUR saw TRY process exit, must have failed. %s",
+		       getpid() as int,
+                       "Going to top of loop to spawn a new try.");
+
+		// pipe "failed" to VISOR:
+
+		pipe32reply("CUR", "failed", pipe_reply.out);
+	
+	    }
+	}
+	
+	
     } // end start()
 
     /**
@@ -288,6 +292,35 @@ impl Visor {
     }
 }
 
+// reply with a message at most 32 bytes.
+#[fixed_stack_segment]
+fn pipe32reply(from: &str, replymsg: &str, fd: c_int) -> i64 {
+  
+  static REPLYLEN : uint = 32;
+  assert!(replymsg.len() < REPLYLEN);
+  let mut replybuf = ~[0u8, ..REPLYLEN];
+  std::vec::bytes::copy_memory(replybuf, replymsg.as_bytes(), replymsg.len());
+  replybuf.truncate(replymsg.len());
+  
+  let mut bytes_written : i64;
+  bytes_written = do replybuf.as_mut_buf |ptr, len| {
+      unsafe {
+	std::libc::write(fd, ptr as *std::libc::types::common::c95::c_void, len as u64)
+      }
+    };
+  assert!(bytes_written == replymsg.len() as i64);
+  
+  if (bytes_written < 0) {
+    fail!("%d %s: read on pipe_code.out failed with errno: %? '%?'", 
+          getpid() as int, from, std::os::errno(), std::os::last_os_error());
+  }
+  
+  debug!("%d %s: sent replymsg of len '%?' with content '%s'", 
+         getpid() as int, from, replymsg.len(), replymsg);
+
+  bytes_written
+}
+
 #[fixed_stack_segment]
 fn single_threaded_main() {
     let mut v = Visor::new();
@@ -298,5 +331,10 @@ fn single_threaded_main() {
 #[start]
 #[fixed_stack_segment]
 fn start(argc: int, argv: **u8) -> int {
-    std::rt::start_on_main_thread(argc, argv, single_threaded_main)
+
+    // so we don't get extra threads.
+    setenv("RUST_THREADS", "1");
+
+    // and we ourselves run on the first thread.
+    rt::start_on_main_thread(argc, argv, single_threaded_main)
 }

@@ -93,3 +93,12 @@ pub fn read(fd: libc::c_int, buf: *mut libc::c_void, count: libc::size_t) -> lib
 pub fn write(fd: libc::c_int, buf: *libc::c_void, count: libc::size_t) -> libc::ssize_t {
     unsafe { libc::write(fd, buf, count) }
 }
+
+pub fn process_group_exit() -> ! {
+    #[fixed_stack_segment]; #[inline(never)];
+    unsafe { 
+        // send SIGTERM to all processes in my process group
+        ll::kill(0, libc::SIGTERM);
+        libc::exit(0); 
+    }
+}
