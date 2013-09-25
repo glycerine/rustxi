@@ -19,12 +19,12 @@ mod ll {
 
 #[fixed_stack_segment]
 pub fn waitpid(pid: libc::pid_t, status: &mut libc::c_int) -> libc::pid_t {
-    unsafe { ::std::libc::funcs::posix01::wait::waitpid(pid, status, 0) }
+    unsafe { libc::funcs::posix01::wait::waitpid(pid, status, 0) }
 }
 
 #[fixed_stack_segment]
 pub fn waitpid_async(pid: libc::pid_t, status: &mut libc::c_int) -> libc::pid_t {
-    unsafe { ::std::libc::funcs::posix01::wait::waitpid(pid, status, 1) }
+    unsafe { libc::funcs::posix01::wait::waitpid(pid, status, 1) }
 }
 
 #[fixed_stack_segment]

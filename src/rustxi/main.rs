@@ -30,7 +30,7 @@ static PROMPT: &'static str = "rustxi> ";
 
 struct Visor {
     /// history of commands
-    cmd:  ~[~str],
+    cmd: ~[~str],
     /// function dependency graph
     callgraph: callgraph::BothWayGraph,
 }
