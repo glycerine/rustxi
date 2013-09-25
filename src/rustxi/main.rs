@@ -419,19 +419,3 @@ fn compile_and_run_code_snippet(code : &str) {
     debug!("%d: TRY: on code '%s', simulating success.", getpid() as int, code);
 
 }
-
-
-#[fixed_stack_segment]
-fn setup_ctrl_c_handler() {
-  /*
-    struct sigaction sa;
-    bzero(&sa,sizeof(struct sigaction));
-    struct sigaction oldact;
-    sa.sa_handler = &ctrl_c_handler;
-    if (-1 == sigaction(SIGINT , &sa, &oldact)) {
-        perror("error: could not setup SIGINT signal handler. Aborting.");
-        exit(1);
-    }
-  */
-}
-
