@@ -58,9 +58,8 @@ fn prompt() -> &str {
 #[fixed_stack_segment]
 #[abi = "cdecl"]
 fn ctrl_c_handler(_signum: c_int) {
-  printfln!("%s"," [ctrl-c]");
-    printf!("%s",prompt());
-
+    println(" [ctrl-c]");
+    print(prompt());
 }
 
 #[fixed_stack_segment]
@@ -88,7 +87,6 @@ impl Visor {
             callgraph: callgraph::BothWayGraph::new(),
         }
     }
-
 
     pub fn start(&mut self) {
         // only TRY should get SIGINT (ctrl-c)
@@ -183,15 +181,12 @@ impl Visor {
                     },
                 }
 
-
-
                 debug!("visor is: %?", self);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
                 buffer.truncate(code.len());
                 //debug!("buffer is '%?' after copy from '%s'", buffer, code);
-
 
                 // send code over to TRY
                 do buffer.as_mut_buf |ptr, len| {
@@ -247,8 +242,6 @@ impl Visor {
 
         // steady-state: I'm CUR
         loop {
-            util::ignore_sigint();
-
             debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d",
                    util::getpid() as int,
                    util::getppid() as int);
@@ -305,7 +298,6 @@ impl Visor {
                        util::getpid() as int, ppid as int);
 
                 pipe32reply("TRY", "success", pipe_reply.out);
-
             } else {
                 // I am CUR. I wait for TRY to finish. If TRY succeeds I never
                 // wake up. If TRY fails, I goto the
@@ -317,9 +309,7 @@ impl Visor {
                        "Going to top of loop to spawn a new try.");
 
                 // pipe "failed" to VISOR:
-
                 pipe32reply("CUR", "failed", pipe_reply.out);
-
             }
         }
 
