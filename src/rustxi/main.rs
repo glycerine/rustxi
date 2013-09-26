@@ -29,6 +29,7 @@ static CODEBUF_SIZE: i64 = 4096;
 // Since prompt() is called by the ctrl-c signal handler, it must
 // be global and not a method.
 //
+#[inline]
 fn help() -> &str {
     static HELP: &'static str = "\
 .?                   show help
@@ -41,12 +42,14 @@ fn help() -> &str {
     HELP
 }
 
+#[inline]
 fn banner() -> &str {
     static BANNER: &'static str = "rustxi: a transactional jit-based repl; \
                                    .? for help; .q or ctrl-d to exit.";
     BANNER
 }
 
+#[inline]
 fn prompt() -> &str {
     static PROMPT: &'static str = "rustxi> ";
     PROMPT
@@ -154,7 +157,7 @@ impl Visor {
                         // correct history only... failed commands commented out.
                         let mut i = 0;
                         for c in self.cmd.iter() {
-                            if (self.failed[i]) { printf!("%s", "//!: ") }
+                            if self.failed[i] { printf!("%s", "//!: ") }
                             printfln!("%s", *c);
                             i = i + 1;
                         }
@@ -205,7 +208,7 @@ impl Visor {
                     util::read(pipe_reply.input, ptr as *mut libc::c_void, len as u64)
                 };
 
-                if (bytesread < 0) {
+                if bytesread < 0 {
                     fail!("%d: I am VISOR: visor failed to read from code_pipe: %s",
                           util::getpid() as int,
                           os::last_os_error());
@@ -216,11 +219,9 @@ impl Visor {
                 };
 
                 match replystr {
-                    ~"failed"  => { self.failed.push(true); },
-                    ~"success" => { self.failed.push(false); },
-                    _ => {
-                        fail!("VISOR doesn't recongize reply for CUR/TRY: %s", replystr);
-                    }
+                    ~"failed"  => self.failed.push(true),
+                    ~"success" => self.failed.push(false),
+                    _ => fail!("VISOR doesn't recongize reply for CUR/TRY: %s", replystr),
                 }
 
                 debug!("%d: I am VISOR: I got an '%d' byte message back: '%s'",
@@ -249,8 +250,8 @@ impl Visor {
             util::ignore_sigint();
 
             debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d",
-            util::getpid() as int,
-            util::getppid() as int);
+                   util::getpid() as int,
+                   util::getppid() as int);
 
             let pid = util::fork();
             if pid == 0 {
@@ -294,14 +295,14 @@ impl Visor {
                 util::ignore_sigint();
                 debug!("%d: TRY succeeded in running the code, killing old CUR \
                         and I will become the new CUR.",
-                util::getpid() as int);
+                        util::getpid() as int);
                 let ppid = util::getppid();
                 util::kill(ppid, libc::SIGTERM);
 
                 // we are already a part of the visor's group, 
                 // just we have init (pid 1) as a parent now.
                 debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
-                util::getpid() as int, ppid as int);
+                       util::getpid() as int, ppid as int);
 
                 pipe32reply("TRY", "success", pipe_reply.out);
 
@@ -368,7 +369,7 @@ fn pipe32reply(from: &str, replymsg: &str, fd: libc::c_int) -> i64 {
     };
     assert!(bytes_written == replymsg.len() as i64);
 
-    if (bytes_written < 0) {
+    if bytes_written < 0 {
         fail!("%d %s: read on pipe_code.out failed with errno: %? '%?'",
               util::getpid() as int, from, os::errno(), os::last_os_error());
     }
