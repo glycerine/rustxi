@@ -12,10 +12,10 @@
 
 extern mod extra;
 
-use std::{io, libc, os, vec, rt};
-use callgraph::CallGraph;
+use std::{cast, io, libc, os, vec, rt};
 use std::libc::{c_int, c_void};
-use std::cast;
+
+use callgraph::CallGraph;
 
 mod callgraph;
 mod signum;
@@ -309,10 +309,11 @@ impl Visor {
                 // I am CUR. I wait for TRY to finish. If TRY succeeds I never
                 // wake up. If TRY fails, I goto the
                 // top of the steady-state loop and try again
-                std::run::waitpid(pid);
+                let mut status = 0 as c_int;
+                util::waitpid(pid, &mut status);
                 debug!("%d: CUR saw TRY process exit, must have failed. %s",
-                util::getpid() as int,
-                "Going to top of loop to spawn a new try.");
+                       util::getpid() as int,
+                       "Going to top of loop to spawn a new try.");
 
                 // pipe "failed" to VISOR:
 
@@ -389,7 +390,7 @@ fn single_threaded_main() {
 #[fixed_stack_segment]
 fn start(argc: int, argv: **u8) -> int {
     // so we don't get extra threads.
-    std::os::setenv("RUST_THREADS", "1");
+    os::setenv("RUST_THREADS", "1");
 
     // and we ourselves run on the first thread.
     rt::start_on_main_thread(argc, argv, single_threaded_main)
