@@ -154,7 +154,7 @@ impl Visor {
                         // correct history only... failed commands commented out.
                         let mut i = 0;
                         for c in self.cmd.iter() {
-                            if (self.failed[i]) { printf!("%s", "//!: ") }
+                            if (self.failed[i]) { printf!("%s", "//not: ") }
                             printfln!("%s", *c);
                             i = i + 1;
                         }
