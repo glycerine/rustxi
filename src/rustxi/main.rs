@@ -12,10 +12,10 @@
 
 extern mod extra;
 
-use std::{cast, io, libc, os, vec, rt};
-use std::libc::{c_int, c_void};
-
+use std::{io, libc, os, vec, rt};
 use callgraph::CallGraph;
+use std::libc::{c_int, c_void};
+use std::cast;
 
 mod callgraph;
 mod signum;
@@ -155,7 +155,7 @@ impl Visor {
                         // correct history only... failed commands commented out.
                         let mut i = 0;
                         for c in self.cmd.iter() {
-                            if self.failed[i] { printf!("%s", "//!: ") }
+                            if (self.failed[i]) { printf!("%s", "//not: ") }
                             printfln!("%s", *c);
                             i = i + 1;
                         }
@@ -242,6 +242,8 @@ impl Visor {
 
         // steady-state: I'm CUR
         loop {
+            util::ignore_sigint();
+
             debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d",
                    util::getpid() as int,
                    util::getppid() as int);
