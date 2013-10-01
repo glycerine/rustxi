@@ -155,24 +155,24 @@ impl Visor {
                         // correct history only... failed commands commented out.
                         let mut i = 0;
                         for c in self.cmd.iter() {
-                            if (self.failed[i]) { printf!("%s", "//not: ") }
-                            printfln!("%s", *c);
+                            if (self.failed[i]) { print!("{:s}", "//not: ") }
+                            println!("{:s}", *c);
                             i = i + 1;
                         }
                         loop;
                     },
                     ".h" => {
                         for c in self.cmd.iter() {
-                            printfln!("%s", *c);
+                            println!("{:s}", *c);
                         }
                         loop;
                     },
                     ".s" => {
-                        printfln!("TODO: implement .s <file> sourcing.");
+                        println("TODO: implement .s <file> sourcing.");
                         loop;
                     },
                     ".." => {
-                        printfln!("TODO: implement system(cmd) shell outs.");
+                        println("TODO: implement system(cmd) shell outs.");
                         loop;
                     },
                     _ => {
