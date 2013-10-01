@@ -11,17 +11,22 @@
  **/
 
 extern mod extra;
+extern mod syntax;
+extern mod rustc;
 
 use std::{io, libc, os, vec, rt};
-use callgraph::CallGraph;
 use std::libc::{c_int, c_void};
 use std::cast;
 
+use callgraph::CallGraph;
+
+mod compile;
 mod callgraph;
 mod signum;
 mod util;
 
 static CODEBUF_SIZE: i64 = 4096;
+pub static PROGRAM_NAME: &'static str = "rustxi";
 
 // help(), banner(), prompt():
 // generate user-facing help strings. Since these may be dynamic or
@@ -29,6 +34,7 @@ static CODEBUF_SIZE: i64 = 4096;
 // Since prompt() is called by the ctrl-c signal handler, it must
 // be global and not a method.
 //
+#[inline]
 fn help() -> &str {
     static HELP: &'static str = "\
 .?                   show help
@@ -41,12 +47,14 @@ fn help() -> &str {
     HELP
 }
 
+#[inline]
 fn banner() -> &str {
     static BANNER: &'static str = "rustxi: a transactional jit-based repl; \
                                    .? for help; .q or ctrl-d to exit.";
     BANNER
 }
 
+#[inline]
 fn prompt() -> &str {
     static PROMPT: &'static str = "rustxi> ";
     PROMPT
@@ -55,9 +63,8 @@ fn prompt() -> &str {
 #[fixed_stack_segment]
 #[abi = "cdecl"]
 fn ctrl_c_handler(_signum: c_int) {
-  printfln!("%s"," [ctrl-c]");
-    printf!("%s",prompt());
-
+    println(" [ctrl-c]");
+    print(prompt());
 }
 
 #[fixed_stack_segment]
@@ -85,7 +92,6 @@ impl Visor {
             callgraph: callgraph::BothWayGraph::new(),
         }
     }
-
 
     pub fn start(&mut self) {
         // only TRY should get SIGINT (ctrl-c)
@@ -154,24 +160,30 @@ impl Visor {
                         // correct history only... failed commands commented out.
                         let mut i = 0;
                         for c in self.cmd.iter() {
-                            if (self.failed[i]) { printf!("%s", "//not: ") }
-                            printfln!("%s", *c);
+                            if (self.failed[i]) { print!("{:s}", "//not: ") }
+                            println!("{:s}", *c);
                             i = i + 1;
                         }
                         loop;
                     },
                     ".h" => {
                         for c in self.cmd.iter() {
-                            printfln!("%s", *c);
+                            println!("{:s}", *c);
                         }
                         loop;
                     },
                     ".s" => {
-                        printfln!("TODO: implement .s <file> sourcing.");
+                        println("TODO: implement .s <file> sourcing.");
                         loop;
                     },
                     ".." => {
-                        printfln!("TODO: implement system(cmd) shell outs.");
+                        println("TODO: implement system(cmd) shell outs.");
+                        loop;
+                    },
+                    ".g" => {
+                        self.callgraph_exec(trimmed_code
+                                            .slice_from(2)
+                                            .trim_left());
                         loop;
                     },
                     _ => {
@@ -180,15 +192,12 @@ impl Visor {
                     },
                 }
 
-
-
                 debug!("visor is: %?", self);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
                 buffer.truncate(code.len());
                 //debug!("buffer is '%?' after copy from '%s'", buffer, code);
-
 
                 // send code over to TRY
                 do buffer.as_mut_buf |ptr, len| {
@@ -205,7 +214,7 @@ impl Visor {
                     util::read(pipe_reply.input, ptr as *mut libc::c_void, len as u64)
                 };
 
-                if (bytesread < 0) {
+                if bytesread < 0 {
                     fail!("%d: I am VISOR: visor failed to read from code_pipe: %s",
                           util::getpid() as int,
                           os::last_os_error());
@@ -216,11 +225,9 @@ impl Visor {
                 };
 
                 match replystr {
-                    ~"failed"  => { self.failed.push(true); },
-                    ~"success" => { self.failed.push(false); },
-                    _ => {
-                        fail!("VISOR doesn't recongize reply for CUR/TRY: %s", replystr);
-                    }
+                    ~"failed"  => self.failed.push(true),
+                    ~"success" => self.failed.push(false),
+                    _ => fail!("VISOR doesn't recongize reply for CUR/TRY: %s", replystr),
                 }
 
                 debug!("%d: I am VISOR: I got an '%d' byte message back: '%s'",
@@ -249,8 +256,8 @@ impl Visor {
             util::ignore_sigint();
 
             debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d",
-            util::getpid() as int,
-            util::getppid() as int);
+                   util::getpid() as int,
+                   util::getppid() as int);
 
             let pid = util::fork();
             if pid == 0 {
@@ -288,47 +295,41 @@ impl Visor {
                  *  here is where call to do the majority of the
                  *  actual work: compile and run the code.
                  */
-                self.compile_and_run_code_snippet(code);
+                compile::compile_and_run(code);
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
                 debug!("%d: TRY succeeded in running the code, killing old CUR \
                         and I will become the new CUR.",
-                util::getpid() as int);
+                        util::getpid() as int);
                 let ppid = util::getppid();
                 util::kill(ppid, libc::SIGTERM);
 
                 // we are already a part of the visor's group, 
                 // just we have init (pid 1) as a parent now.
                 debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
-                util::getpid() as int, ppid as int);
+                       util::getpid() as int, ppid as int);
 
                 pipe32reply("TRY", "success", pipe_reply.out);
-
             } else {
                 // I am CUR. I wait for TRY to finish. If TRY succeeds I never
                 // wake up. If TRY fails, I goto the
                 // top of the steady-state loop and try again
-                std::run::waitpid(pid);
+                let mut status = 0 as c_int;
+                util::waitpid(pid, &mut status);
                 debug!("%d: CUR saw TRY process exit, must have failed. %s",
-                util::getpid() as int,
-                "Going to top of loop to spawn a new try.");
+                       util::getpid() as int,
+                       "Going to top of loop to spawn a new try.");
 
                 // pipe "failed" to VISOR:
-
                 pipe32reply("CUR", "failed", pipe_reply.out);
-
             }
         }
 
 
     } // end start()
 
-    /**
-     *  here is where the heart of the jit-repl will be: here
-     *   we actually compile and run the code.
-     **/
-    fn compile_and_run_code_snippet(&mut self, code: &str) {
+    fn callgraph_exec(&mut self, code: &str) {
         match code.find_str(": ") {
             None => {
                 debug!("%d: TRY: on code '%s', cannot find \": \"", 
@@ -367,7 +368,7 @@ fn pipe32reply(from: &str, replymsg: &str, fd: libc::c_int) -> i64 {
     };
     assert!(bytes_written == replymsg.len() as i64);
 
-    if (bytes_written < 0) {
+    if bytes_written < 0 {
         fail!("%d %s: read on pipe_code.out failed with errno: %? '%?'",
               util::getpid() as int, from, os::errno(), os::last_os_error());
     }
@@ -389,7 +390,7 @@ fn single_threaded_main() {
 #[fixed_stack_segment]
 fn start(argc: int, argv: **u8) -> int {
     // so we don't get extra threads.
-    std::os::setenv("RUST_THREADS", "1");
+    os::setenv("RUST_THREADS", "1");
 
     // and we ourselves run on the first thread.
     rt::start_on_main_thread(argc, argv, single_threaded_main)
