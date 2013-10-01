@@ -11,17 +11,22 @@
  **/
 
 extern mod extra;
+extern mod syntax;
+extern mod rustc;
 
 use std::{io, libc, os, vec, rt};
-use callgraph::CallGraph;
 use std::libc::{c_int, c_void};
 use std::cast;
 
+use callgraph::CallGraph;
+
+mod compile;
 mod callgraph;
 mod signum;
 mod util;
 
 static CODEBUF_SIZE: i64 = 4096;
+pub static PROGRAM_NAME: &'static str = "rustxi";
 
 // help(), banner(), prompt():
 // generate user-facing help strings. Since these may be dynamic or
@@ -175,6 +180,12 @@ impl Visor {
                         println("TODO: implement system(cmd) shell outs.");
                         loop;
                     },
+                    ".g" => {
+                        self.callgraph_exec(trimmed_code
+                                            .slice_from(2)
+                                            .trim_left());
+                        loop;
+                    },
                     _ => {
                         // not a meta command: add to history
                         self.cmd.push(code.clone());
@@ -284,7 +295,7 @@ impl Visor {
                  *  here is where call to do the majority of the
                  *  actual work: compile and run the code.
                  */
-                self.compile_and_run_code_snippet(code);
+                compile::compile_and_run(code);
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
@@ -318,11 +329,7 @@ impl Visor {
 
     } // end start()
 
-    /**
-     *  here is where the heart of the jit-repl will be: here
-     *   we actually compile and run the code.
-     **/
-    fn compile_and_run_code_snippet(&mut self, code: &str) {
+    fn callgraph_exec(&mut self, code: &str) {
         match code.find_str(": ") {
             None => {
                 debug!("%d: TRY: on code '%s', cannot find \": \"", 
