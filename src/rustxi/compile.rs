@@ -23,7 +23,7 @@ pub fn compile_and_run(code: &str) {
 
     let crate = driver::phase_1_parse_input(sess, cfg.clone(), &input);
     let expanded_crate = driver::phase_2_configure_and_expand(sess, cfg, crate);
-    let analysis = driver::phase_3_run_analysis_passes(sess, &expanded_crate);
+    let analysis = driver::phase_3_run_analysis_passes(sess, expanded_crate);
     let trans = driver::phase_4_translate_to_llvm(sess, expanded_crate, &analysis, outputs);
     driver::phase_5_run_llvm_passes(sess, &trans, outputs);
 
