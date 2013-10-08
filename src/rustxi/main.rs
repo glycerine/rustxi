@@ -150,11 +150,11 @@ impl Visor {
                         // that's not working yet, so cleanup for sure with allquit().
                         util::process_group_exit();
                     },
-                    "" => loop,
+                    "" => continue,
                     ".q" => util::process_group_exit(),
                     ".?" => {
                         println(help());
-                        loop;
+                        continue;
                     },
                     ".c" => {
                         // correct history only... failed commands commented out.
@@ -164,27 +164,27 @@ impl Visor {
                             println!("{:s}", *c);
                             i = i + 1;
                         }
-                        loop;
+                        continue;
                     },
                     ".h" => {
                         for c in self.cmd.iter() {
                             println!("{:s}", *c);
                         }
-                        loop;
+                        continue;
                     },
                     ".s" => {
                         println("TODO: implement .s <file> sourcing.");
-                        loop;
+                        continue;
                     },
                     ".." => {
                         println("TODO: implement system(cmd) shell outs.");
-                        loop;
+                        continue;
                     },
                     ".g" => {
                         self.callgraph_exec(trimmed_code
                                             .slice_from(2)
                                             .trim_left());
-                        loop;
+                        continue;
                     },
                     _ => {
                         // not a meta command: add to history
