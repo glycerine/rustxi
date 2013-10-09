@@ -9,7 +9,9 @@ pub trait CallGraph {
         let mut ids = ~[];
         while ids != affected_ids {
             ids = affected_ids;
-            affected_ids = ids + ids.flat_map(|&i| self.fns_directly_affected_by(i));
+            affected_ids = ids + do ids.flat_map |&i| {
+                self.fns_directly_affected_by(i)
+            };
             affected_ids.qsort();
             affected_ids.dedup();
         }
