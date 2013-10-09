@@ -4,7 +4,7 @@ use std::hashmap;
 pub trait CallGraph {
     fn update<'l>(&'l mut self, func: ~str, dependencies: &[&str]) -> ~[&'l ~str];
     fn fns_directly_affected_by(&self, id: uint) -> ~[uint];
-    fn fns_affected_by<'l>(&'l self, id: uint) -> ~[uint] {
+    fn fns_affected_by(&self, id: uint) -> ~[uint] {
         let mut affected_ids = self.fns_directly_affected_by(id);
         let mut ids = ~[];
         while ids != affected_ids {
