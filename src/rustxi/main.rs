@@ -180,12 +180,6 @@ impl Visor {
                         println("TODO: implement system(cmd) shell outs.");
                         continue;
                     },
-                    ".g" => {
-                        self.callgraph_exec(trimmed_code
-                                            .slice_from(2)
-                                            .trim_left());
-                        continue;
-                    },
                     _ => {
                         // not a meta command: add to history
                         self.cmd.push(code.clone());
@@ -291,11 +285,18 @@ impl Visor {
                 };
 
                 debug!("%d: TRY: I see code to run: '%s'", util::getpid() as int, code);
-                /*
-                 *  here is where call to do the majority of the
-                 *  actual work: compile and run the code.
-                 */
-                compile::compile_and_run(code);
+
+                let trimmed_code = code.trim_left();
+                if trimmed_code.slice_to(2) == ".g" {
+                    self.callgraph_exec(trimmed_code.slice_from(2)
+                                        .trim_left());
+                } else {
+                    /*
+                     *  here is where call to do the majority of the
+                     *  actual work: compile and run the code.
+                     */
+                    compile::compile_and_run(code);
+                }
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
@@ -332,22 +333,34 @@ impl Visor {
     fn callgraph_exec(&mut self, code: &str) {
         match code.find_str(": ") {
             None => {
-                debug!("%d: TRY: on code '%s', cannot find \": \"", 
-                       util::getpid() as int, code);
-                fail!("TRY code failure: parse error");
+                debug2!("{:d}: TRY: on code '{:s}', cannot find \": \""
+                        , util::getpid() as int, code);
+                fail2!("TRY code failure: parse error");
             },
             Some(pos) => {
                 let func = code.slice_to(pos).to_owned();
-                let deps: ~[&str] = code.slice_from(pos + 2).trim()
-                    .split_iter(',').map(|s| s.trim())
-                    .collect();
-                let affected = self.callgraph.update(func, deps);
-                for &f in affected.iter() {
-                    print!("{:s} ", *f);
+                let rest = code.slice_from(pos + 2).trim();
+                let deps = if rest == "" {
+                    ~[]
+                } else {
+                    rest.split_iter(',').map(|s| s.trim()).collect()
+                };
+                if self.callgraph.contains(&[func.as_slice()]) {
+                    match self.callgraph.update(func, deps) {
+                        Err(e) => print(e),
+                        Ok(affected) => for &f in affected.iter() {
+                            print!("{:s} ", *f);
+                        },
+                    }
+                } else {
+                    match self.callgraph.add(func, deps) {
+                        Ok(*) => print("Added new function"),
+                        Err(e) => print(e),
+                    }
                 }
                 println("");
-                debug!("%d: TRY: on code '%s', success.", 
-                       util::getpid() as int, code);
+                debug2!("{:d}: TRY: on code '{:s}', success."
+                        , util::getpid() as int, code);
             },
         }
     }
