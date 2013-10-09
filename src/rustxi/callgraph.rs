@@ -2,10 +2,17 @@ use extra::sort::Sort;
 use std::hashmap;
 
 pub static DEP_NOT_IN_GRAPH: &'static str = "Dependency not in graph";
+pub static FN_NOT_IN_GRAPH: &'static str = "Function not in graph";
 
 pub trait CallGraph {
+    fn update<'l>(&'l mut self, func: ~str, dependencies: &[&str])
+        -> Result<~[&'l ~str], &str>;
+    fn delete(&mut self, func: &str) -> Result<~[~str], &str>;
+    fn fns<'l>(&'l self) -> &'l ~[~str];
+    fn fns_directly_affected_by(&self, id: uint) -> ~[uint];
+
     fn add(&mut self, func: ~str, dependencies: &[&str]) -> Result<(), &str> {
-        assert!(!self.contains(&[func]));
+        assert!(!self.contains(&[func.as_slice()]));
         match self.update(func, dependencies) {
             Ok(affected) => {
                 assert!(affected.len() == 0);
@@ -14,12 +21,6 @@ pub trait CallGraph {
             Err(e) => Err(e),
         }
     }
-
-    fn update<'l>(&'l mut self, func: ~str, dependencies: &[&str])
-        -> Result<~[&'l ~str], &str>;
-    fn delete<'l>(&'l mut self, func: &str) -> ~[&'l ~str];
-    fn fns<'l>(&'l self) -> &'l ~[~str];
-    fn fns_directly_affected_by(&self, id: uint) -> ~[uint];
 
     fn fns_affected_by(&self, id: uint) -> ~[uint] {
         let mut affected_ids = self.fns_directly_affected_by(id);
@@ -108,6 +109,28 @@ impl CallGraph for CallerToCalleeGraph {
         Ok(self.fns_affected_by(new_fn_position).map(|&i| &self.fns[i]))
     }
 
+    fn delete(&mut self, func: &str) -> Result<~[~str], &str> {
+        if !self.contains(&[func]) {
+            return Err(FN_NOT_IN_GRAPH);
+        }
+        let fn_position = position(func, self.fns).unwrap();
+        let affected_ids = self.fns_affected_by(fn_position);
+        // remove func and its deps from graph
+        self.graph.pop(&fn_position);
+        for id in affected_ids.iter() {
+            self.graph.pop(id);
+        }
+        let affected = affected_ids.map(|&i| self.fns[i].clone());
+        do self.fns.retain |s| {
+            if func == *s {
+                false
+            } else {
+                affected.position_elem(s).is_none()
+            }
+        }
+        Ok(affected)
+    }
+
     fn fns_directly_affected_by(&self, id: uint) -> ~[uint] {
         self.graph.iter().filter(|&(_, v)| v.contains(&id)).map(|(&k, _)| k).collect()
     }
@@ -168,6 +191,28 @@ impl CallGraph for CalleeToCallerGraph {
         Ok(caller_ids.map(|&i| &self.fns[i]))
     }
 
+    fn delete(&mut self, func: &str) -> Result<~[~str], &str> {
+        if !self.contains(&[func]) {
+            return Err(FN_NOT_IN_GRAPH);
+        }
+        let fn_position = position(func, self.fns).unwrap();
+        let affected_ids = self.fns_affected_by(fn_position);
+        // remove func and its deps from graph
+        self.graph.pop(&fn_position);
+        for id in affected_ids.iter() {
+            self.graph.pop(id);
+        }
+        let affected = affected_ids.map(|&i| self.fns[i].clone());
+        do self.fns.retain |s| {
+            if func == *s {
+                false
+            } else {
+                affected.position_elem(s).is_none()
+            }
+        }
+        Ok(affected)
+    }
+
     fn fns_directly_affected_by(&self, id: uint) -> ~[uint] {
         match self.graph.find(&id) {
             None => ~[],
@@ -199,7 +244,14 @@ impl CallGraph for BothWayGraph {
         -> Result<~[&'l ~str], &str> {
         let l1 = self.caller_callee.update(func.clone(), dependencies);
         let l2 = self.callee_caller.update(func, dependencies);
-        assert!(l1 == l2)
+        assert!(l1 == l2);
+        l1
+    }
+
+    fn delete(&mut self, func: &str) -> Result<~[~str], &str> {
+        let l1 = self.caller_callee.delete(func);
+        let l2 = self.callee_caller.delete(func);
+        assert!(l1 == l2);
         l1
     }
 

@@ -331,38 +331,45 @@ impl Visor {
     } // end start()
 
     fn callgraph_exec(&mut self, code: &str) {
-        match code.find_str(": ") {
-            None => {
-                debug2!("{:d}: TRY: on code '{:s}', cannot find \": \""
-                        , util::getpid() as int, code);
-                fail2!("TRY code failure: parse error");
-            },
-            Some(pos) => {
-                let func = code.slice_to(pos).to_owned();
-                let rest = code.slice_from(pos + 2).trim();
-                let deps = if rest == "" {
-                    ~[]
-                } else {
-                    rest.split_iter(',').map(|s| s.trim()).collect()
-                };
-                if self.callgraph.contains(&[func.as_slice()]) {
-                    match self.callgraph.update(func, deps) {
-                        Err(e) => print(e),
-                        Ok(affected) => for &f in affected.iter() {
-                            print!("{:s} ", *f);
-                        },
+        if code.char_at(0) == 'd' {
+            match self.callgraph.delete(code.slice_from(1).trim_left()) {
+                Err(e) => fail2!("TRY code failure: {:?}", e),
+                Ok(*) => print("Deleted function"),
+            }
+        } else {
+            match code.find_str(": ") {
+                None => {
+                    debug2!("{:d}: TRY: on code '{:s}', cannot find \": \""
+                            , util::getpid() as int, code);
+                    fail2!("TRY code failure: parse error");
+                },
+                Some(pos) => {
+                    let func = code.slice_to(pos).to_owned();
+                    let rest = code.slice_from(pos + 2).trim();
+                    let deps = if rest == "" {
+                        ~[]
+                    } else {
+                        rest.split_iter(',').map(|s| s.trim()).collect()
+                    };
+                    if self.callgraph.contains(&[func.as_slice()]) {
+                        match self.callgraph.update(func, deps) {
+                            Err(e) => fail2!("TRY code failure: {:?}", e),
+                            Ok(affected) => for &f in affected.iter() {
+                                print!("{:s} ", *f);
+                            },
+                        }
+                    } else {
+                        match self.callgraph.add(func, deps) {
+                            Err(e) => fail2!("TRY code failure: {:?}", e),
+                            Ok(*) => print("Added new function"),
+                        }
                     }
-                } else {
-                    match self.callgraph.add(func, deps) {
-                        Ok(*) => print("Added new function"),
-                        Err(e) => print(e),
-                    }
-                }
-                println("");
-                debug2!("{:d}: TRY: on code '{:s}', success."
-                        , util::getpid() as int, code);
-            },
+                },
+            }
         }
+        println("");
+        debug2!("{:d}: TRY: on code '{:s}', success."
+                , util::getpid() as int, code);
     }
 }
 
