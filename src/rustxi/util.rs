@@ -6,7 +6,7 @@ mod signum;
 
 #[nolink]
 #[abi = "cdecl"]
-mod ll {
+pub mod ll {
     use std::libc::{c_int, c_void, c_schar};
     use std::libc::types::os::arch::posix88::{pid_t};
     use std::libc::types::common::c95::{FILE};
