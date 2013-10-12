@@ -287,7 +287,7 @@ impl Visor {
                 debug!("%d: TRY: I see code to run: '%s'", util::getpid() as int, code);
 
                 let trimmed_code = code.trim_left();
-                if trimmed_code.slice_to(2) == ".g" {
+                if trimmed_code.char_len() > 2 && trimmed_code.slice_to(2) == ".g" {
                     self.callgraph_exec(trimmed_code.slice_from(2)
                                         .trim_left());
                 } else {
