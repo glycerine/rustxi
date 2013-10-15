@@ -11,7 +11,7 @@ pub fn compile_and_run(code: &str) {
     let options = @session::options {
         crate_type: session::unknown_crate,
         binary: super::PROGRAM_NAME.to_managed(),
-        addl_lib_search_paths: @mut ~[path::Path("/home/minh/Documents/Workplace/rust/rust/x86_64-unknown-linux-gnu/stage2/lib")],
+        addl_lib_search_paths: @mut ~[path::Path("/home/minh/opt/lib")],
         jit: true,
         .. (*session::basic_options()).clone()
     };

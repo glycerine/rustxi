@@ -103,7 +103,7 @@ impl Visor {
 
         // core dumping, for now commentout: install_sigint_ctrl_c_handler();
 
-        debug!("visor called with pid:%?    sid:%?    pgrp:%?",
+        debug2!("visor called with pid:{:?}    sid:{:?}    pgrp:{:?}",
                visor_pid, visor_sid, visor_pgrp);
 
         //
@@ -140,7 +140,7 @@ impl Visor {
                 match trimmed_code {
                     "" if io::stdin().eof() => {
                         // ctrl-d should exit so we can send files on stdin eventually.
-                        debug!("%d: VISOR: I see EOF", util::getpid() as int);
+                        debug2!("{:d}: VISOR: I see EOF", util::getpid() as int);
                         println("");
 
                         // send EOF on pipe_code to TRY, so it knows to shut itself down.
@@ -186,12 +186,12 @@ impl Visor {
                     },
                 }
 
-                debug!("visor is: %?", self);
+                debug2!("visor is: {:?}", self);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
                 vec::bytes::copy_memory(buffer, code.as_bytes(), code.len());
                 buffer.truncate(code.len());
-                //debug!("buffer is '%?' after copy from '%s'", buffer, code);
+                //debug2!("buffer is '{:?}' after copy from '{:s}'", buffer, code);
 
                 // send code over to TRY
                 do buffer.as_mut_buf |ptr, len| {
@@ -199,7 +199,7 @@ impl Visor {
                 }
 
                 // wait for reply
-                debug!("%d: I am VISOR: waiting for more, success, or failed",
+                debug2!("{:d}: I am VISOR: waiting for more, success, or failed",
                 util::getpid() as int);
                 // wait for "more" (from TRY) or "done" (from TRY) or "failed" (from CUR)
                 let mut replybuf = ~[0u8, ..8];
@@ -209,7 +209,7 @@ impl Visor {
                 };
 
                 if bytesread < 0 {
-                    fail!("%d: I am VISOR: visor failed to read from code_pipe: %s",
+                    fail2!("{:d}: I am VISOR: visor failed to read from code_pipe: {:s}",
                           util::getpid() as int,
                           os::last_os_error());
                 }
@@ -221,10 +221,10 @@ impl Visor {
                 match replystr {
                     ~"failed"  => self.failed.push(true),
                     ~"success" => self.failed.push(false),
-                    _ => fail!("VISOR doesn't recongize reply for CUR/TRY: %s", replystr),
+                    _ => fail2!("VISOR doesn't recongize reply for CUR/TRY: {:s}", replystr),
                 }
 
-                debug!("%d: I am VISOR: I got an '%d' byte message back: '%s'",
+                debug2!("{:d}: I am VISOR: I got an '{:d}' byte message back: '{:s}'",
                        util::getpid() as int,
                        bytesread as int, replystr);
 
@@ -249,7 +249,7 @@ impl Visor {
         loop {
             util::ignore_sigint();
 
-            debug!("%d: I am CUR: top of steady-state loop. About to fork a new TRY. parent: %d",
+            debug2!("{:d}: I am CUR: top of steady-state loop. About to fork a new TRY. parent: {:d}",
                    util::getpid() as int,
                    util::getppid() as int);
 
@@ -260,7 +260,7 @@ impl Visor {
                 // TODO: needed? where? util::ll::rust_unset_sigprocmask();
                 install_sigint_ctrl_c_handler();
 
-                debug!("%d: I am TRY: about to request code line.",
+                debug2!("{:d}: I am TRY: about to request code line.",
                        util::getpid() as int);
 
                 let mut buffer = ~[0u8, ..CODEBUF_SIZE];
@@ -271,25 +271,26 @@ impl Visor {
                     };
 
                     if bytes_read < 0 {
-                        debug!("read on pipe_code.out failed with errno: %? '%?'", 
+                        debug2!("read on pipe_code.out failed with errno: {:?} '{:?}'", 
                                os::errno(), os::last_os_error());
                         break;
                     }
                     if bytes_read > 0 { break; }
                 }
 
-                debug!("bytes_read is %d", bytes_read as int);
+                debug2!("bytes_read is {:d}", bytes_read as int);
                 buffer.truncate(bytes_read as uint);
                 let code = do buffer.as_mut_buf |ptr, _| {
                     util::copy_buf_to_string(ptr, bytes_read as uint)
                 };
 
-                debug!("%d: TRY: I see code to run: '%s'", util::getpid() as int, code);
+                debug2!("{:d}: TRY: I see code to run: '{:s}'", util::getpid() as int, code);
 
+                debug2!("============Got here==============");
                 let trimmed_code = code.trim_left();
                 if trimmed_code.char_len() > 2 && trimmed_code.slice_to(2) == ".g" {
-                    self.callgraph_exec(trimmed_code.slice_from(2)
-                                        .trim_left());
+                    debug2!("about to manipulate call graph");
+                    self.callgraph_exec(trimmed_code.slice_from(2));
                 } else {
                     /*
                      *  here is where call to do the majority of the
@@ -300,7 +301,7 @@ impl Visor {
 
                 // we become the new CUR, so ignore ctrl-c again.
                 util::ignore_sigint();
-                debug!("%d: TRY succeeded in running the code, killing old CUR \
+                debug2!("{:d}: TRY succeeded in running the code, killing old CUR \
                         and I will become the new CUR.",
                         util::getpid() as int);
                 let ppid = util::getppid();
@@ -308,7 +309,7 @@ impl Visor {
 
                 // we are already a part of the visor's group, 
                 // just we have init (pid 1) as a parent now.
-                debug!("%d: TRY: I'm channeling Odysseus. I just killed ppid %d with SIGTERM.",
+                debug2!("{:d}: TRY: I'm channeling Odysseus. I just killed ppid {:d} with SIGTERM.",
                        util::getpid() as int, ppid as int);
 
                 pipe32reply("TRY", "success", pipe_reply.out);
@@ -318,7 +319,7 @@ impl Visor {
                 // top of the steady-state loop and try again
                 let mut status = 0 as c_int;
                 util::waitpid(pid, &mut status);
-                debug!("%d: CUR saw TRY process exit, must have failed. %s",
+                debug2!("{:d}: CUR saw TRY process exit, must have failed. {:s}",
                        util::getpid() as int,
                        "Going to top of loop to spawn a new try.");
 
@@ -337,30 +338,31 @@ impl Visor {
                 Ok(*) => print("Deleted function"),
             }
         } else {
-            match code.find_str(": ") {
+            let trimmed_code = code.trim_left();
+            match trimmed_code.find_str(": ") {
                 None => {
-                    debug2!("{:d}: TRY: on code '{:s}', cannot find \": \""
-                            , util::getpid() as int, code);
-                    fail2!("TRY code failure: parse error");
+                    debug2!("{:d}: TRY: on trimmed_code '{:s}', cannot find \": \""
+                            , util::getpid() as int, trimmed_code);
+                    fail2!("TRY trimmed_code failure: parse error");
                 },
                 Some(pos) => {
-                    let func = code.slice_to(pos).to_owned();
-                    let rest = code.slice_from(pos + 2).trim();
-                    let deps = if rest == "" {
+                    let func = trimmed_code.slice_to(pos).to_owned();
+                    let rest = trimmed_code.slice_from(pos + 2).trim();
+                    let deps = if rest.len() == 0 {
                         ~[]
                     } else {
                         rest.split_iter(',').map(|s| s.trim()).collect()
                     };
                     if self.callgraph.contains(&[func.as_slice()]) {
                         match self.callgraph.update(func, deps) {
-                            Err(e) => fail2!("TRY code failure: {:?}", e),
+                            Err(e) => fail2!("TRY trimmed_code failure: {:?}", e),
                             Ok(affected) => for &f in affected.iter() {
                                 print!("{:s} ", *f);
                             },
                         }
                     } else {
                         match self.callgraph.add(func, deps) {
-                            Err(e) => fail2!("TRY code failure: {:?}", e),
+                            Err(e) => fail2!("TRY trimmed_code failure: {:?}", e),
                             Ok(*) => print("Added new function"),
                         }
                     }
@@ -389,11 +391,11 @@ fn pipe32reply(from: &str, replymsg: &str, fd: libc::c_int) -> i64 {
     assert!(bytes_written == replymsg.len() as i64);
 
     if bytes_written < 0 {
-        fail!("%d %s: read on pipe_code.out failed with errno: %? '%?'",
+        fail2!("{:d} {:s}: read on pipe_code.out failed with errno: {:?} '{:?}'",
               util::getpid() as int, from, os::errno(), os::last_os_error());
     }
 
-    debug!("%d: %s: sent replymsg of len '%?' with content '%s'",
+    debug2!("{:d}: {:s}: sent replymsg of len '{:?}' with content '{:s}'",
            util::getpid() as int, from, replymsg.len(), replymsg);
 
     bytes_written
