@@ -286,10 +286,8 @@ impl Visor {
 
                 debug2!("{:d}: TRY: I see code to run: '{:s}'", util::getpid() as int, code);
 
-                debug2!("============Got here==============");
                 let trimmed_code = code.trim_left();
                 if trimmed_code.char_len() > 2 && trimmed_code.slice_to(2) == ".g" {
-                    debug2!("about to manipulate call graph");
                     self.callgraph_exec(trimmed_code.slice_from(2));
                 } else {
                     /*
@@ -341,9 +339,9 @@ impl Visor {
             let trimmed_code = code.trim_left();
             match trimmed_code.find_str(": ") {
                 None => {
-                    debug2!("{:d}: TRY: on trimmed_code '{:s}', cannot find \": \""
+                    debug2!("{:d}: TRY: on code '{:s}', cannot find \": \""
                             , util::getpid() as int, trimmed_code);
-                    fail2!("TRY trimmed_code failure: parse error");
+                    fail2!("TRY code failure: parse error");
                 },
                 Some(pos) => {
                     let func = trimmed_code.slice_to(pos).to_owned();
@@ -355,21 +353,21 @@ impl Visor {
                     };
                     if self.callgraph.contains(&[func.as_slice()]) {
                         match self.callgraph.update(func, deps) {
-                            Err(e) => fail2!("TRY trimmed_code failure: {:?}", e),
+                            Err(e) => fail2!("TRY code failure: {:?}", e),
                             Ok(affected) => for &f in affected.iter() {
                                 print!("{:s} ", *f);
                             },
                         }
                     } else {
                         match self.callgraph.add(func, deps) {
-                            Err(e) => fail2!("TRY trimmed_code failure: {:?}", e),
-                            Ok(*) => print("Added new function"),
+                            Err(e) => fail2!("TRY code failure: {:?}", e),
+                            Ok(*) => print!("Added new function"),
                         }
                     }
                 },
             }
         }
-        println("");
+        println!("");
         debug2!("{:d}: TRY: on code '{:s}', success."
                 , util::getpid() as int, code);
     }
